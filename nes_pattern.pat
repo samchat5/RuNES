@@ -110,8 +110,6 @@ struct File {
     // Trainer Area
     if (header.flags1.trainer) {
         u8 trainer[512];
-    } else {
-        u8 _unused[512];
     }
     
     // PRG-ROM Area
@@ -129,3 +127,4 @@ struct File {
 };
 
 File file @ 0x0;
+

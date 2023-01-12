@@ -1,5 +1,6 @@
 mod cpu;
+pub mod ines_parser;
 
 fn main() {
-    println!("Hello, world!");
+    ines_parser::main();
 }
