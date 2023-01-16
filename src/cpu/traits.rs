@@ -1,32 +1,60 @@
 use super::cpu::{AddressingMode, Register, Status};
 
-pub trait LoadStore {
-    fn ld(&mut self, mode: AddressingMode, reg: Register);
+pub enum LogicalOp {
+    EOR,
+    AND,
+    ORA,
+}
 
-    fn st(&mut self, mode: AddressingMode, reg: Register);
+pub enum ArithOp {
+    ADC,
+    SBC,
+}
+pub enum IncDec {
+    INC,
+    DEC,
+}
+
+pub enum ShiftOp {
+    ASL,
+    LSR,
+}
+
+pub trait LoadStore {
+    fn ld(&mut self, mode: AddressingMode, reg: Vec<Register>);
+
+    fn st(&mut self, mode: AddressingMode, reg: Vec<Register>);
+
+    fn lax(&mut self, mode: AddressingMode) {
+        self.ld(mode, vec![Register::A, Register::X]);
+    }
 
     fn lda(&mut self, mode: AddressingMode) {
-        self.ld(mode, Register::A);
+        self.ld(mode, vec![Register::A]);
     }
 
     fn ldx(&mut self, mode: AddressingMode) {
-        self.ld(mode, Register::X);
+        self.ld(mode, vec![Register::X]);
     }
 
     fn ldy(&mut self, mode: AddressingMode) {
-        self.ld(mode, Register::Y);
+        self.ld(mode, vec![Register::Y]);
+    }
+
+    fn sax(&mut self, mode: AddressingMode) {
+        self.st(mode, vec![Register::A, Register::X]);
     }
 
     fn sta(&mut self, mode: AddressingMode) {
-        self.st(mode, Register::A);
+        self.st(mode, vec![Register::A]);
     }
 
     fn stx(&mut self, mode: AddressingMode) {
-        self.st(mode, Register::X);
+        self.st(mode, vec![Register::X]);
     }
 
     fn sty(&mut self, mode: AddressingMode) {
-        self.st(mode, Register::Y);
+        self.st(mode, vec![Register::Y]);
     }
 }
 
@@ -76,46 +104,55 @@ pub trait StackOps {
     }
 }
 
-pub enum LogicalOp {
-    EOR,
-    AND,
-    ORA,
-}
-
 pub trait Logical {
-    fn bit_op(&mut self, mode: AddressingMode, op: LogicalOp);
+    fn bit_op(&mut self, mode: AddressingMode, op: LogicalOp, does_inc_cycle: bool);
 
     fn bit(&mut self, mode: AddressingMode);
 
     fn and(&mut self, mode: AddressingMode) {
-        self.bit_op(mode, LogicalOp::AND);
+        self.bit_op(mode, LogicalOp::AND, true);
+    }
+
+    fn and_no_inc(&mut self, mode: AddressingMode) {
+        self.bit_op(mode, LogicalOp::AND, false);
     }
 
     fn ora(&mut self, mode: AddressingMode) {
-        self.bit_op(mode, LogicalOp::ORA);
+        self.bit_op(mode, LogicalOp::ORA, true);
+    }
+
+    fn ora_no_inc(&mut self, mode: AddressingMode) {
+        self.bit_op(mode, LogicalOp::ORA, false);
     }
 
     fn eor(&mut self, mode: AddressingMode) {
-        self.bit_op(mode, LogicalOp::EOR);
+        self.bit_op(mode, LogicalOp::EOR, true);
+    }
+
+    fn eor_no_inc(&mut self, mode: AddressingMode) {
+        self.bit_op(mode, LogicalOp::EOR, false);
     }
 }
 
-pub enum ArithOp {
-    ADC,
-    SBC,
-}
-
 pub trait Arithmetic {
-    fn arith(&mut self, mode: AddressingMode, op: ArithOp);
+    fn arith(&mut self, mode: AddressingMode, op: ArithOp, does_inc_cycle: bool);
 
     fn cmpr(&mut self, mode: AddressingMode, reg: Register);
 
     fn adc(&mut self, mode: AddressingMode) {
-        self.arith(mode, ArithOp::ADC);
+        self.arith(mode, ArithOp::ADC, true);
+    }
+
+    fn adc_no_inc(&mut self, mode: AddressingMode) {
+        self.arith(mode, ArithOp::ADC, false);
     }
 
     fn sbc(&mut self, mode: AddressingMode) {
-        self.arith(mode, ArithOp::SBC);
+        self.arith(mode, ArithOp::SBC, true);
+    }
+
+    fn sbc_no_inc(&mut self, mode: AddressingMode) {
+        self.arith(mode, ArithOp::SBC, false);
     }
 
     fn cmp(&mut self, mode: AddressingMode) {
@@ -130,15 +167,16 @@ pub trait Arithmetic {
         self.cmpr(mode, Register::Y);
     }
 }
-pub enum IncDec {
-    INC,
-    DEC,
-}
 
-pub trait IncDecOps {
+pub trait IncDecOps: Arithmetic {
     fn inc_dec(&mut self, mode: AddressingMode, op: IncDec);
 
     fn inc_dec_reg(&mut self, reg: Register, op: IncDec);
+
+    fn isb(&mut self, mode: AddressingMode) {
+        self.inc(mode);
+        self.sbc_no_inc(mode);
+    }
 
     fn inc(&mut self, mode: AddressingMode) {
         self.inc_dec(mode, IncDec::INC);
@@ -163,14 +201,14 @@ pub trait IncDecOps {
     fn dey(&mut self) {
         self.inc_dec_reg(Register::Y, IncDec::DEC);
     }
+
+    fn dcp(&mut self, mode: AddressingMode) {
+        self.dec(mode);
+        self.cmp(mode);
+    }
 }
 
-pub enum ShiftOp {
-    ASL,
-    LSR,
-}
-
-pub trait Shift {
+pub trait Shift: Logical + Arithmetic {
     fn shift(&mut self, mode: AddressingMode, op: ShiftOp);
 
     fn rol(&mut self, mode: AddressingMode);
@@ -183,6 +221,26 @@ pub trait Shift {
 
     fn lsr(&mut self, mode: AddressingMode) {
         self.shift(mode, ShiftOp::LSR);
+    }
+
+    fn slo(&mut self, mode: AddressingMode) {
+        self.asl(mode);
+        self.ora_no_inc(mode);
+    }
+
+    fn rla(&mut self, mode: AddressingMode) {
+        self.rol(mode);
+        self.and_no_inc(mode);
+    }
+
+    fn sre(&mut self, mode: AddressingMode) {
+        self.lsr(mode);
+        self.eor_no_inc(mode);
+    }
+
+    fn rra(&mut self, mode: AddressingMode) {
+        self.ror(mode);
+        self.adc_no_inc(mode);
     }
 }
 
@@ -263,7 +321,7 @@ pub trait FlagChanges {
 }
 
 pub trait SysFuncs {
-    fn nop(&mut self) {}
+    fn nop(&mut self, mode: AddressingMode);
 
     fn brk(&mut self);
 

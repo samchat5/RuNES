@@ -77,31 +77,39 @@ pub struct CPU {
     pub cycles: u64,
 }
 
+trait ResetAddr {
+    fn reset(&mut self);
+}
+
 impl LoadStore for CPU {
-    fn ld(&mut self, mode: AddressingMode, reg: Register) {
+    fn ld(&mut self, mode: AddressingMode, regs: Vec<Register>) {
         let (val, inc_cycles) = self.get_absolute_addr(mode, self.pc).unwrap();
         if inc_cycles {
             self.cycles += 1;
         }
         let val = self.read(val);
-        match reg {
+        regs.iter().for_each(|reg| match reg {
             Register::X => self.x = val,
             Register::Y => self.y = val,
             Register::A => self.acc = val,
             _ => panic!("Invalid register for load"),
-        }
+        });
         self.status.set(Status::ZERO, val == 0);
         self.status.set(Status::NEGATIVE, val & 0x80 != 0);
     }
 
-    fn st(&mut self, mode: AddressingMode, reg: Register) {
-        let addr = self.get_operand_addr(mode).unwrap();
-        match reg {
-            Register::X => self.write(addr, self.x),
-            Register::Y => self.write(addr, self.y),
-            Register::A => self.write(addr, self.acc),
-            _ => panic!("Invalid register for store"),
-        }
+    fn st(&mut self, mode: AddressingMode, regs: Vec<Register>) {
+        self.write(
+            self.get_operand_addr(mode).unwrap(),
+            regs.iter().fold(0xff, |acc, r| {
+                acc & match r {
+                    Register::X => self.x,
+                    Register::Y => self.y,
+                    Register::A => self.acc,
+                    _ => panic!("Invalid register for store"),
+                }
+            }),
+        );
     }
 }
 
@@ -162,8 +170,12 @@ impl StackOps for CPU {
 }
 
 impl Logical for CPU {
-    fn bit_op(&mut self, mode: AddressingMode, op: LogicalOp) {
-        let val = self.read(self.get_operand_addr(mode).unwrap());
+    fn bit_op(&mut self, mode: AddressingMode, op: LogicalOp, does_inc_cycles: bool) {
+        let (addr, inc_cycles) = self.get_absolute_addr(mode, self.pc).unwrap();
+        let val = self.read(addr);
+        if inc_cycles && does_inc_cycles {
+            self.cycles += 1;
+        }
         self.acc = match op {
             LogicalOp::AND => self.acc & val,
             LogicalOp::ORA => self.acc | val,
@@ -182,7 +194,7 @@ impl Logical for CPU {
 }
 
 impl Arithmetic for CPU {
-    fn arith(&mut self, mode: AddressingMode, op: ArithOp) {
+    fn arith(&mut self, mode: AddressingMode, op: ArithOp, does_inc_cycle: bool) {
         let (val, inc_cycle) = self.get_absolute_addr(mode, self.pc).unwrap();
         let val = self.read(val);
         let val = match op {
@@ -204,7 +216,7 @@ impl Arithmetic for CPU {
 
         self.acc = result;
 
-        if inc_cycle {
+        if inc_cycle && does_inc_cycle {
             self.cycles += 1;
         }
     }
@@ -263,29 +275,24 @@ impl IncDecOps for CPU {
 
 impl Shift for CPU {
     fn shift(&mut self, mode: AddressingMode, op: ShiftOp) {
-        match op {
-            ShiftOp::ASL => self.status.set(Status::CARRY, self.acc & 0x80 != 0),
-            ShiftOp::LSR => self.status.set(Status::CARRY, self.acc & 0x01 != 0),
-        }
-        let result = match mode {
-            AddressingMode::Accumulator => {
-                let res = match op {
-                    ShiftOp::ASL => (self.acc << 1) as u8,
-                    ShiftOp::LSR => self.acc >> 1,
-                };
-                self.acc = res;
-                res
+        let addr = self.get_operand_addr(mode);
+        let val = match mode {
+            AddressingMode::Accumulator => self.acc,
+            _ => self.read(addr.unwrap()),
+        };
+        let result = match op {
+            ShiftOp::ASL => {
+                self.status.set(Status::CARRY, val & 0x80 != 0);
+                (val << 1) as u8
             }
-            _ => {
-                let addr = self.get_operand_addr(mode).unwrap();
-                let val = self.read(addr);
-                let res = match op {
-                    ShiftOp::ASL => ((val as i8) << 1) as u8,
-                    ShiftOp::LSR => val >> 1,
-                };
-                self.write(addr, res);
-                res
+            ShiftOp::LSR => {
+                self.status.set(Status::CARRY, val & 0x01 != 0);
+                (val >> 1) as u8
             }
+        };
+        match mode {
+            AddressingMode::Accumulator => self.acc = result,
+            _ => self.write(addr.unwrap(), result),
         };
         self.status.set(Status::ZERO, result == 0);
         self.status.set(Status::NEGATIVE, result & 0x80 != 0);
@@ -302,8 +309,8 @@ impl Shift for CPU {
             _ => {
                 let addr = self.get_operand_addr(mode).unwrap();
                 let val = self.read(addr);
-                self.status.set(Status::CARRY, val & 0x80 != 0);
                 let res = (val << 1) | self.status.contains(Status::CARRY) as u8;
+                self.status.set(Status::CARRY, val & 0x80 != 0);
                 self.write(addr, res);
                 res
             }
@@ -381,6 +388,14 @@ impl FlagChanges for CPU {
 }
 
 impl SysFuncs for CPU {
+    fn nop(&mut self, mode: AddressingMode) {
+        let inc_cycles = match self.get_absolute_addr(mode, self.pc) {
+            Some((_, true)) => 1,
+            _ => 0,
+        };
+        self.cycles += inc_cycles;
+    }
+
     fn brk(&mut self) {
         self.pc += 1;
         if !self.status.contains(Status::INTERRUPT_DISABLE) {
@@ -504,16 +519,22 @@ impl CPU {
             .and_then(|(addr, _)| Some(addr))
     }
 
-    pub fn run(&mut self) {
-        // Set PC to interrupt vector
-        self.pc = 0xc000;
-        self.cycles = 7;
+    pub fn reset(&mut self) {
+        self.reset_with_val(self.read_16(0xFFFC));
+    }
 
+    pub fn reset_with_val(&mut self, val: u16) {
+        self.pc = val;
+        self.cycles = 7;
+    }
+
+    pub fn run(&mut self) {
         // Open log file for writing
         let mut log_file = std::fs::OpenOptions::new()
             .create(true)
             .write(true)
-            .open("log.txt")
+            .truncate(true)
+            .open("tests/nestest/log.txt")
             .unwrap();
 
         writeln!(log_file, "{}", trace(self)).unwrap();
@@ -530,77 +551,71 @@ impl CPU {
 
             let pc_copy = self.pc;
 
-            match opcode {
-                0x00 => self.brk(),
-                0x09 | 0x05 | 0x15 | 0x0d | 0x1d | 0x19 | 0x01 | 0x11 => {
-                    self.ora(op.addressing_mode);
-                }
-                0x0a | 0x06 | 0x16 | 0x0e | 0x1e => self.asl(op.addressing_mode),
-                0x08 => self.php(),
-                0x10 => self.bpl(),
-                0x18 => self.clc(),
-                0x20 => self.jsr(),
-                0x29 | 0x25 | 0x35 | 0x2d | 0x3d | 0x39 | 0x21 | 0x31 => {
-                    self.and(op.addressing_mode)
-                }
-                0x24 | 0x2c => self.bit(op.addressing_mode),
-                0x2a | 0x26 | 0x36 | 0x2e | 0x3e => self.rol(op.addressing_mode),
-                0x28 => self.plp(),
-                0x30 => self.bmi(),
-                0x38 => self.sec(),
-                0x40 => self.rti(),
-                0x49 | 0x45 | 0x55 | 0x4D | 0x5d | 0x59 | 0x41 | 0x51 => {
-                    self.eor(op.addressing_mode)
-                }
-                0x4a | 0x46 | 0x56 | 0x4e | 0x5e => self.lsr(op.addressing_mode),
-                0x48 => self.pha(),
-                0x4c | 0x6c => self.jmp(op.addressing_mode),
-                0x50 => self.bvc(),
-                0x58 => self.cli(),
-                0x60 => self.rts(),
-                0x69 | 0x65 | 0x75 | 0x6d | 0x7d | 0x79 | 0x61 | 0x71 => {
-                    self.adc(op.addressing_mode)
-                }
-                0x6a | 0x66 | 0x76 | 0x6e | 0x7e => self.ror(op.addressing_mode),
-                0x68 => self.pla(),
-                0x70 => self.bvs(),
-                0x78 => self.sei(),
-                0x85 | 0x95 | 0x8d | 0x9d | 0x99 | 0x81 | 0x91 => self.sta(op.addressing_mode),
-                0x84 | 0x94 | 0x8c => self.sty(op.addressing_mode),
-                0x86 | 0x96 | 0x8e => self.stx(op.addressing_mode),
-                0x88 => self.dey(),
-                0x8a => self.txa(),
-                0x90 => self.bcc(),
-                0x98 => self.tya(),
-                0x9a => self.txs(),
-                0xa0 | 0xa4 | 0xb4 | 0xac | 0xbc => self.ldy(op.addressing_mode),
-                0xa9 | 0xa5 | 0xb5 | 0xad | 0xbd | 0xb9 | 0xa1 | 0xb1 => {
-                    self.lda(op.addressing_mode)
-                }
-                0xa2 | 0xa6 | 0xb6 | 0xae | 0xbe => self.ldx(op.addressing_mode),
-                0xa8 => self.tay(),
-                0xaa => self.tax(),
-                0xb0 => self.bcs(),
-                0xb8 => self.clv(),
-                0xba => self.tsx(),
-                0xc0 | 0xc4 | 0xcc => self.cpy(op.addressing_mode),
-                0xc9 | 0xc5 | 0xd5 | 0xcd | 0xdd | 0xd9 | 0xc1 | 0xd1 => {
-                    self.cmp(op.addressing_mode)
-                }
-                0xc6 | 0xd6 | 0xce | 0xde => self.dec(op.addressing_mode),
-                0xc8 => self.iny(),
-                0xca => self.dex(),
-                0xd0 => self.bne(),
-                0xd8 => self.cld(),
-                0xe0 | 0xe4 | 0xec => self.cpx(op.addressing_mode),
-                0xe9 | 0xe5 | 0xf5 | 0xed | 0xfd | 0xf9 | 0xe1 | 0xf1 => {
-                    self.sbc(op.addressing_mode)
-                }
-                0xe6 | 0xf6 | 0xee | 0xfe => self.inc(op.addressing_mode),
-                0xe8 => self.inx(),
-                0xea => self.nop(),
-                0xf0 => self.beq(),
-                0xf8 => self.sed(),
+            match op.name {
+                "AND" => self.and(op.addressing_mode),
+                "ADC" => self.adc(op.addressing_mode),
+                "ASL" => self.asl(op.addressing_mode),
+                "BCC" => self.bcc(),
+                "BCS" => self.bcs(),
+                "BEQ" => self.beq(),
+                "BIT" => self.bit(op.addressing_mode),
+                "BPL" => self.bpl(),
+                "BMI" => self.bmi(),
+                "BNE" => self.bne(),
+                "BRK" => self.brk(),
+                "BVC" => self.bvc(),
+                "BVS" => self.bvs(),
+                "CLC" => self.clc(),
+                "CLD" => self.cld(),
+                "CLI" => self.cli(),
+                "CLV" => self.clv(),
+                "CMP" => self.cmp(op.addressing_mode),
+                "CPX" => self.cpx(op.addressing_mode),
+                "CPY" => self.cpy(op.addressing_mode),
+                "*DCP" => self.dcp(op.addressing_mode),
+                "DEC" => self.dec(op.addressing_mode),
+                "DEX" => self.dex(),
+                "DEY" => self.dey(),
+                "EOR" => self.eor(op.addressing_mode),
+                "INC" => self.inc(op.addressing_mode),
+                "INX" => self.inx(),
+                "INY" => self.iny(),
+                "*ISB" => self.isb(op.addressing_mode),
+                "JMP" => self.jmp(op.addressing_mode),
+                "JSR" => self.jsr(),
+                "*LAX" => self.lax(op.addressing_mode),
+                "LDA" => self.lda(op.addressing_mode),
+                "LDX" => self.ldx(op.addressing_mode),
+                "LDY" => self.ldy(op.addressing_mode),
+                "LSR" => self.lsr(op.addressing_mode),
+                "NOP" | "*NOP" => self.nop(op.addressing_mode),
+                "ORA" => self.ora(op.addressing_mode),
+                "PHA" => self.pha(),
+                "PHP" => self.php(),
+                "PLA" => self.pla(),
+                "PLP" => self.plp(),
+                "ROL" => self.rol(op.addressing_mode),
+                "ROR" => self.ror(op.addressing_mode),
+                "*RLA" => self.rla(op.addressing_mode),
+                "*RRA" => self.rra(op.addressing_mode),
+                "RTI" => self.rti(),
+                "RTS" => self.rts(),
+                "*SAX" => self.sax(op.addressing_mode),
+                "SBC" | "*SBC" => self.sbc(op.addressing_mode),
+                "SEC" => self.sec(),
+                "SED" => self.sed(),
+                "SEI" => self.sei(),
+                "*SLO" => self.slo(op.addressing_mode),
+                "*SRE" => self.sre(op.addressing_mode),
+                "STA" => self.sta(op.addressing_mode),
+                "STY" => self.sty(op.addressing_mode),
+                "STX" => self.stx(op.addressing_mode),
+                "TAX" => self.tax(),
+                "TAY" => self.tay(),
+                "TSX" => self.tsx(),
+                "TXA" => self.txa(),
+                "TXS" => self.txs(),
+                "TYA" => self.tya(),
                 _ => panic!("Unknown opcode: {:02x}", opcode),
             }
 
