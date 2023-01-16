@@ -85,21 +85,21 @@ struct Header {
 
 fn get_prg_rom_size(Header header) {
     if (header.rom_size_msb.prg == 0xF) {
-        return std::math::min(std::math::pow(2, header.prg_rom_size_lsb & 0xFC)
-			* ((header.prg_rom_size_lsb & 0x03) * 2 + 1), sizeof($) - $);
+        return std::math::pow(2, header.prg_rom_size_lsb & 0xFC)
+			* ((header.prg_rom_size_lsb & 0x03) * 2 + 1);
     } else {
-        return std::math::min((u16(header.prg_rom_size_lsb) | 
-			u16(header.rom_size_msb.prg) << 8) * 16384, sizeof($) - $);
+        return (u16(header.prg_rom_size_lsb) | 
+			u16(header.rom_size_msb.prg) << 8) * 16384;
     }
 };
 
 fn get_chr_rom_area(Header header) {
     if (header.rom_size_msb.chr == 0xF) {
-        return std::math::min(std::math::pow(2, header.chr_rom_size_lsb & 0xFC) 
-			* ((header.prg_rom_size_lsb & 0x03) * 2 + 1), sizeof($) - $);
+        return std::math::pow(2, header.chr_rom_size_lsb & 0xFC) 
+			* ((header.prg_rom_size_lsb & 0x03) * 2 + 1);
     } else {
-        return std::math::min((u16(header.chr_rom_size_lsb) | 
-			u16(header.rom_size_msb.chr) << 8) * 8192, sizeof($) - $);
+        return (u16(header.chr_rom_size_lsb) | 
+			u16(header.rom_size_msb.chr) << 8) * 8192;
     }    
 };
 

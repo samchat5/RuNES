@@ -1,5 +1,3 @@
-use std::cmp::min;
-
 const NES_MAGIC: [u8; 4] = [0x4e, 0x45, 0x53, 0x1a];
 
 enum NameTableMirrorType {
@@ -170,7 +168,7 @@ enum ConsoleType {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Header {
+pub struct Header {
     magic: [u8; 4],
     prg_rom_size_lsb: u8,
     chr_rom_size_lsb: u8,
@@ -235,25 +233,25 @@ fn get_chr_rom_size(header: Header) -> usize {
 }
 
 #[derive(Debug)]
-struct File {
+pub struct File {
     // Header
-    header: Header,
+    pub header: Header,
 
     // Trainer Area
-    trainer: Option<[u8; 512]>,
+    pub trainer: Option<[u8; 512]>,
 
     // PRG-ROM Area
-    prg_rom_area: Vec<u8>,
+    pub prg_rom_area: Vec<u8>,
 
     // CHR-ROM Area
-    chr_rom_area: Option<Vec<u8>>,
+    pub chr_rom_area: Option<Vec<u8>>,
 
     // Misc ROM Area
-    misc_rom_area: Option<Vec<u8>>,
+    pub misc_rom_area: Option<Vec<u8>>,
 }
 
 impl File {
-    fn new(file_path: &str) -> Self {
+    pub fn new(file_path: &str) -> Self {
         let bytes = std::fs::read(file_path).unwrap();
         let file_size = bytes.len();
 
@@ -290,9 +288,4 @@ impl File {
             misc_rom_area,
         }
     }
-}
-
-pub fn main() {
-    let file = File::new("tests/nes_instr_test/rom_singles/01-implied.nes");
-    println!("{:?}", file);
 }
