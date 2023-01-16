@@ -1,4 +1,5 @@
-use super::cpu::{AddressingMode, Register, Status};
+#![allow(clippy::upper_case_acronyms)]
+use super::{AddressingMode, Register, Status};
 
 pub enum LogicalOp {
     EOR,

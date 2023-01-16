@@ -1,3 +1,5 @@
+#![allow(non_camel_case_types, dead_code, clippy::upper_case_acronyms)]
+
 const NES_MAGIC: [u8; 4] = [0x4e, 0x45, 0x53, 0x1a];
 
 enum NameTableMirrorType {
@@ -107,8 +109,8 @@ enum CHRRAMSizeEnum {
 impl CHRRAMSize {
     fn get(self, arg: CHRRAMSizeEnum) -> u8 {
         match arg {
-            CHRRAMSizeEnum::CHR_RAM_SIZE => return self.0 & 0x0f,
-            CHRRAMSizeEnum::CHR_NVRAM_SIZE => return (self.0 & 0xf0) >> 4,
+            CHRRAMSizeEnum::CHR_RAM_SIZE => self.0 & 0x0f,
+            CHRRAMSizeEnum::CHR_NVRAM_SIZE => (self.0 & 0xf0) >> 4,
         }
     }
 }
@@ -117,7 +119,7 @@ impl CHRRAMSize {
 struct Timing(u8);
 impl Timing {
     fn get(self) -> u8 {
-        return self.0 & 0x03;
+        self.0 & 0x03
     }
 }
 
@@ -140,7 +142,7 @@ impl VsSystemType {
 struct ExtendedConsoleType(u8);
 impl ExtendedConsoleType {
     fn get(self) -> u8 {
-        return self.0 & 0x0f;
+        self.0 & 0x0f
     }
 }
 
@@ -148,7 +150,7 @@ impl ExtendedConsoleType {
 struct MiscROMs(u8);
 impl MiscROMs {
     fn get(self) -> u8 {
-        return self.0 & 0x03;
+        self.0 & 0x03
     }
 }
 
@@ -156,14 +158,14 @@ impl MiscROMs {
 struct DefaultExpansionDevice(u8);
 impl DefaultExpansionDevice {
     fn get(self) -> u8 {
-        return self.0 & 0x3f;
+        self.0 & 0x3f
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 enum ConsoleType {
     VsSystemType(VsSystemType),
-    ExtendedConsoleType(ExtendedConsoleType),
+    Extended(ExtendedConsoleType),
     _Unused(u8),
 }
 
@@ -201,7 +203,7 @@ impl Header {
             timing: Timing(bytes[12]),
             console_type: match bytes[7] & 0x03 {
                 1 => ConsoleType::VsSystemType(VsSystemType(bytes[13])),
-                3 => ConsoleType::ExtendedConsoleType(ExtendedConsoleType(bytes[13])),
+                3 => ConsoleType::Extended(ExtendedConsoleType(bytes[13])),
                 _ => ConsoleType::_Unused(bytes[13]),
             },
             misc_roms: MiscROMs(bytes[14]),
