@@ -1,3 +1,5 @@
+#![allow(clippy::upper_case_acronyms)]
+
 pub mod arithmetic;
 pub mod branches;
 pub mod flag_changes;

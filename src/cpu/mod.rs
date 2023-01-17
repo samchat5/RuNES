@@ -5,7 +5,7 @@ mod tracer;
 use core::panic;
 use std::io::{self, Write};
 
-use crate::ines_parser::File;
+use crate::{bus::Bus, ines_parser::File};
 use bitflags::bitflags;
 
 use self::{
@@ -77,7 +77,7 @@ pub struct CPU {
     pub status: Status,
 
     // Memory
-    memory: [u8; 65536],
+    pub bus: Box<Bus>,
 
     // Cycles
     pub cycles: u64,
@@ -101,7 +101,7 @@ impl CPU {
             sp: 0xFD,
             pc: 0,
             status: Status { bits: 0x24 },
-            memory: [0; 65536],
+            bus: Box::new(Bus::new()),
             cycles: 0,
             sink: Box::new(io::sink()),
         }
@@ -112,15 +112,15 @@ impl CPU {
     }
 
     pub fn read(&self, addr: u16) -> u8 {
-        self.memory[addr as usize]
+        self.bus.read(addr)
     }
 
     pub fn write(&mut self, addr: u16, val: u8) {
-        self.memory[addr as usize] = val;
+        self.bus.write(addr, val);
     }
 
     pub fn read_16(&self, addr: u16) -> u16 {
-        ((self.read(addr + 1) as u16) << 8) | (self.read(addr) as u16)
+        self.bus.read_16(addr)
     }
 
     fn stack_push(&mut self, data: u8) {
@@ -145,12 +145,7 @@ impl CPU {
     }
 
     pub fn load_prg_rom(&mut self, cartridge: File) {
-        if cartridge.prg_rom_area.len() == 16384 {
-            self.memory[0x8000..0xc000].copy_from_slice(&cartridge.prg_rom_area);
-            self.memory[0xc000..0x10000].copy_from_slice(&cartridge.prg_rom_area);
-        } else {
-            self.memory[0x8000..0x10000].copy_from_slice(&cartridge.prg_rom_area);
-        }
+        self.bus.load_prg_rom(cartridge.prg_rom_area);
     }
 
     pub fn get_absolute_addr(&self, mode: AddressingMode, addr: u16) -> Option<(u16, bool)> {
