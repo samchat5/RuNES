@@ -1,6 +1,5 @@
-use std::{cell::RefCell, io::BufWriter};
-
 use nes::{cpu::CPU, ines_parser::File};
+use std::{cell::RefCell, io::BufWriter};
 
 fn main() {
     let file = File::new("tests/nestest/nestest.nes");

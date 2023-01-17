@@ -1,6 +1,6 @@
+mod cpu_units;
 mod op;
 mod tracer;
-mod traits;
 
 use core::panic;
 use std::io::{self, Write};
@@ -8,7 +8,16 @@ use std::io::{self, Write};
 use crate::ines_parser::File;
 use bitflags::bitflags;
 
-use self::{op::OPS, tracer::Loggable, traits::*};
+use self::{
+    cpu_units::{
+        arithmetic::Arithmetic, branches::Branches, flag_changes::FlagChanges,
+        inc_dec_ops::IncDecOps, jumps::Jumps, load_store::LoadStore, logical::Logical,
+        register_transfer::RegisterTransfer, shift::Shift, stack_ops::StackOps,
+        sys_funcs::SysFuncs,
+    },
+    op::OPS,
+    tracer::Loggable,
+};
 
 bitflags! {
     pub struct Status: u8 {
@@ -75,346 +84,6 @@ pub struct CPU {
 
     // Logger
     pub sink: Box<dyn Write + Send>,
-}
-
-trait ResetAddr {
-    fn reset(&mut self);
-}
-
-impl LoadStore for CPU {
-    fn ld(&mut self, mode: AddressingMode, regs: Vec<Register>) {
-        let (val, inc_cycles) = self.get_absolute_addr(mode, self.pc).unwrap();
-        if inc_cycles {
-            self.cycles += 1;
-        }
-        let val = self.read(val);
-        regs.iter().for_each(|reg| match reg {
-            Register::X => self.x = val,
-            Register::Y => self.y = val,
-            Register::A => self.acc = val,
-            _ => panic!("Invalid register for load"),
-        });
-        self.status.set(Status::ZERO, val == 0);
-        self.status.set(Status::NEGATIVE, val & 0x80 != 0);
-    }
-
-    fn st(&mut self, mode: AddressingMode, regs: Vec<Register>) {
-        self.write(
-            self.get_operand_addr(mode).unwrap(),
-            regs.iter().fold(0xff, |acc, r| {
-                acc & match r {
-                    Register::X => self.x,
-                    Register::Y => self.y,
-                    Register::A => self.acc,
-                    _ => panic!("Invalid register for store"),
-                }
-            }),
-        );
-    }
-}
-
-impl RegisterTransfer for CPU {
-    fn transfer(&mut self, from: Register, to: Register) {
-        match (from, to) {
-            (Register::A, Register::X) => {
-                self.x = self.acc;
-            }
-            (Register::A, Register::Y) => {
-                self.y = self.acc;
-            }
-            (Register::X, Register::A) => {
-                self.acc = self.x;
-            }
-            (Register::Y, Register::A) => {
-                self.acc = self.y;
-            }
-            _ => panic!("Invalid transfer"),
-        }
-        self.status.set(Status::ZERO, self.acc == 0);
-        self.status.set(Status::NEGATIVE, self.acc >> 7 == 1);
-    }
-}
-
-impl StackOps for CPU {
-    fn tsx(&mut self) {
-        self.x = self.sp;
-        self.status.set(Status::ZERO, self.x == 0);
-        self.status.set(Status::NEGATIVE, self.x & 0x80 != 0);
-    }
-
-    fn txs(&mut self) {
-        self.sp = self.x;
-    }
-
-    fn ph(&mut self, reg: Register) {
-        self.stack_push(match reg {
-            Register::A => self.acc,
-            Register::P => (self.status | Status::BREAK | Status::BREAK2).bits,
-            _ => panic!("Invalid register for push"),
-        });
-    }
-
-    fn pl(&mut self, reg: Register) {
-        match reg {
-            Register::A => {
-                self.acc = self.stack_pop();
-                self.status.set(Status::ZERO, self.acc == 0);
-                self.status.set(Status::NEGATIVE, self.acc & 0x80 != 0);
-            }
-            Register::P => {
-                self.status.bits = self.stack_pop() & !Status::BREAK.bits | Status::BREAK2.bits
-            }
-            _ => panic!("Invalid register for pull"),
-        }
-    }
-}
-
-impl Logical for CPU {
-    fn bit_op(&mut self, mode: AddressingMode, op: LogicalOp, does_inc_cycles: bool) {
-        let (addr, inc_cycles) = self.get_absolute_addr(mode, self.pc).unwrap();
-        let val = self.read(addr);
-        if inc_cycles && does_inc_cycles {
-            self.cycles += 1;
-        }
-        self.acc = match op {
-            LogicalOp::AND => self.acc & val,
-            LogicalOp::ORA => self.acc | val,
-            LogicalOp::EOR => self.acc ^ val,
-        };
-        self.status.set(Status::ZERO, self.acc == 0);
-        self.status.set(Status::NEGATIVE, self.acc & 0x80 != 0);
-    }
-
-    fn bit(&mut self, mode: AddressingMode) {
-        let val = self.read(self.get_operand_addr(mode).unwrap());
-        self.status.set(Status::ZERO, (val & self.acc) == 0);
-        self.status.set(Status::NEGATIVE, val & 0x80 != 0);
-        self.status.set(Status::OVERFLOW, val & 0x40 != 0);
-    }
-}
-
-impl Arithmetic for CPU {
-    fn arith(&mut self, mode: AddressingMode, op: ArithOp, does_inc_cycle: bool) {
-        let (val, inc_cycle) = self.get_absolute_addr(mode, self.pc).unwrap();
-        let val = self.read(val);
-        let val = match op {
-            ArithOp::ADC => val,
-            ArithOp::SBC => (val as i8).wrapping_neg().wrapping_sub(1) as u8,
-        };
-
-        let sum = (self.acc as u16) + (val as u16) + (self.status.contains(Status::CARRY) as u16);
-        let carry = sum > 0xFF;
-        let result = sum as u8;
-
-        self.status.set(Status::CARRY, carry);
-        self.status.set(Status::ZERO, result == 0);
-        self.status.set(
-            Status::OVERFLOW,
-            (self.acc ^ result) & (val ^ result) & 0x80 != 0,
-        );
-        self.status.set(Status::NEGATIVE, result >> 7 == 1);
-
-        self.acc = result;
-
-        if inc_cycle && does_inc_cycle {
-            self.cycles += 1;
-        }
-    }
-
-    fn cmpr(&mut self, mode: AddressingMode, reg: Register) {
-        let val = self.read(self.get_operand_addr(mode).unwrap());
-        let register_val = match reg {
-            Register::A => self.acc,
-            Register::X => self.x,
-            Register::Y => self.y,
-            _ => panic!("Invalid register for compare"),
-        };
-        self.status.set(Status::CARRY, register_val >= val);
-        self.status.set(Status::ZERO, register_val == val);
-        self.status
-            .set(Status::NEGATIVE, (register_val.wrapping_sub(val)) >> 7 == 1);
-    }
-}
-
-impl IncDecOps for CPU {
-    fn inc_dec(&mut self, mode: AddressingMode, op: IncDec) {
-        let addr = self.get_operand_addr(mode).unwrap();
-        let val = match op {
-            IncDec::DEC => self.read(addr).wrapping_sub(1),
-            IncDec::INC => self.read(addr).wrapping_add(1),
-        };
-        self.write(addr, val);
-        self.status.set(Status::ZERO, val == 0);
-        self.status.set(Status::NEGATIVE, val & 0x80 != 0);
-    }
-
-    fn inc_dec_reg(&mut self, reg: Register, op: IncDec) {
-        let val = match (reg, op) {
-            (Register::X, IncDec::INC) => {
-                self.x = self.x.wrapping_add(1);
-                self.x
-            }
-            (Register::X, IncDec::DEC) => {
-                self.x = self.x.wrapping_sub(1);
-                self.x
-            }
-            (Register::Y, IncDec::INC) => {
-                self.y = self.y.wrapping_add(1);
-                self.y
-            }
-            (Register::Y, IncDec::DEC) => {
-                self.y = self.y.wrapping_sub(1);
-                self.y
-            }
-            _ => panic!("Invalid register for inc/dec"),
-        };
-        self.status.set(Status::ZERO, val == 0);
-        self.status.set(Status::NEGATIVE, val & 0x80 != 0);
-    }
-}
-
-impl Shift for CPU {
-    fn shift(&mut self, mode: AddressingMode, op: ShiftOp) {
-        let addr = self.get_operand_addr(mode);
-        let val = match mode {
-            AddressingMode::Accumulator => self.acc,
-            _ => self.read(addr.unwrap()),
-        };
-        let result = match op {
-            ShiftOp::ASL => {
-                self.status.set(Status::CARRY, val & 0x80 != 0);
-                (val << 1) as u8
-            }
-            ShiftOp::LSR => {
-                self.status.set(Status::CARRY, val & 0x01 != 0);
-                (val >> 1) as u8
-            }
-        };
-        match mode {
-            AddressingMode::Accumulator => self.acc = result,
-            _ => self.write(addr.unwrap(), result),
-        };
-        self.status.set(Status::ZERO, result == 0);
-        self.status.set(Status::NEGATIVE, result & 0x80 != 0);
-    }
-
-    fn rol(&mut self, mode: AddressingMode) {
-        let result = match mode {
-            AddressingMode::Accumulator => {
-                let res = (self.acc << 1) | self.status.contains(Status::CARRY) as u8;
-                self.status.set(Status::CARRY, self.acc & 0x80 != 0);
-                self.acc = res;
-                res
-            }
-            _ => {
-                let addr = self.get_operand_addr(mode).unwrap();
-                let val = self.read(addr);
-                let res = (val << 1) | self.status.contains(Status::CARRY) as u8;
-                self.status.set(Status::CARRY, val & 0x80 != 0);
-                self.write(addr, res);
-                res
-            }
-        };
-        self.status.set(Status::ZERO, result == 0);
-        self.status.set(Status::NEGATIVE, (result >> 7) == 1);
-    }
-
-    fn ror(&mut self, mode: AddressingMode) {
-        let result = match mode {
-            AddressingMode::Accumulator => {
-                let res = (self.acc >> 1) | (self.status.contains(Status::CARRY) as u8) << 7;
-                self.status.set(Status::CARRY, self.acc & 0x01 == 1);
-                self.acc = res;
-                res
-            }
-            _ => {
-                let addr = self.get_operand_addr(mode).unwrap();
-                let val = self.read(addr);
-                let res = (val >> 1) | (self.status.contains(Status::CARRY) as u8) << 7;
-                self.status.set(Status::CARRY, val & 0x01 == 1);
-                self.write(addr, res);
-                res
-            }
-        };
-        self.status.set(Status::ZERO, result == 0);
-        self.status.set(Status::NEGATIVE, (result >> 7) == 1);
-    }
-}
-
-impl Jumps for CPU {
-    fn jmp(&mut self, mode: AddressingMode) {
-        match mode {
-            AddressingMode::Absolute => self.pc = self.read_16(self.pc),
-            _ => {
-                // Emulate page boundary bug
-                let addr = self.read_16(self.pc);
-                self.pc = if addr & 0x00ff == 0x00ff {
-                    (self.read(addr & 0xff00) as u16) << 8 | self.read(addr) as u16
-                } else {
-                    self.read_16(addr)
-                };
-            }
-        }
-    }
-
-    fn jsr(&mut self) {
-        self.stack_push_16(self.pc + 1);
-        self.pc = self.read_16(self.pc);
-    }
-
-    fn rts(&mut self) {
-        self.pc = self.stack_pop_16() + 1;
-    }
-}
-
-impl Branches for CPU {
-    fn branch(&mut self, flag: Status, set: bool) {
-        if self.status.contains(flag) == set {
-            self.cycles += 1;
-            let jump = self.read(self.pc) as i8;
-            let addr = self.pc.wrapping_add(1).wrapping_add(jump as u16);
-            if self.pc.wrapping_add(1) & 0xff00 != addr & 0xff00 {
-                self.cycles += 1;
-            }
-            self.pc = addr;
-        }
-    }
-}
-
-impl FlagChanges for CPU {
-    fn flag(&mut self, flag: Status, set: bool) {
-        self.status.set(flag, set);
-    }
-}
-
-impl SysFuncs for CPU {
-    fn nop(&mut self, mode: AddressingMode) {
-        let inc_cycles = match self.get_absolute_addr(mode, self.pc) {
-            Some((_, true)) => 1,
-            _ => 0,
-        };
-        self.cycles += inc_cycles;
-    }
-
-    fn brk(&mut self) {
-        self.pc += 1;
-        if !self.status.contains(Status::INTERRUPT_DISABLE) {
-            self.stack_push_16(self.pc);
-            let mut flag = self.status;
-            flag.set(Status::BREAK, true);
-            flag.set(Status::BREAK2, true);
-            self.stack_push(flag.bits());
-            self.status.insert(Status::INTERRUPT_DISABLE);
-            self.pc = self.read_16(0xfffe);
-        }
-    }
-
-    fn rti(&mut self) {
-        self.status.bits = self.stack_pop();
-        self.status.remove(Status::BREAK);
-        self.status.insert(Status::BREAK2);
-        self.pc = self.stack_pop_16();
-    }
 }
 
 impl Default for CPU {
@@ -535,16 +204,11 @@ impl CPU {
 
     pub fn run(&mut self, cycles: u64) {
         self.log();
-
-        loop {
+        while self.cycles < cycles {
             let opcode = self.read(self.pc);
             let op = &OPS[OPS.binary_search_by_key(&opcode, |op| op.hex).unwrap()];
 
             self.pc += 1;
-
-            if self.cycles >= cycles {
-                break;
-            }
 
             let pc_copy = self.pc;
 

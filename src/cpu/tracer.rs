@@ -8,7 +8,7 @@ pub trait Loggable {
 impl Loggable for CPU {
     fn log(&mut self) {
         let code = self.read(self.pc);
-        let ops = OPS[match OPS.binary_search_by_key(&code, |op| op.hex) {
+        let op = OPS[match OPS.binary_search_by_key(&code, |op| op.hex) {
             Ok(i) => i,
             Err(_) => panic!("Invalid opcode: {:02x}", code),
         }];
@@ -17,7 +17,7 @@ impl Loggable for CPU {
         let mut hex_dump = vec![];
         hex_dump.push(code);
 
-        let (mem_addr, stored_value) = match ops.addressing_mode {
+        let (mem_addr, stored_value) = match op.addressing_mode {
             AddressingMode::Immediate
             | AddressingMode::Implicit
             | AddressingMode::Accumulator
@@ -25,23 +25,23 @@ impl Loggable for CPU {
             | AddressingMode::Indirect => (0, 0),
             _ => {
                 let addr = self
-                    .get_absolute_addr(ops.addressing_mode, begin + 1)
+                    .get_absolute_addr(op.addressing_mode, begin + 1)
                     .unwrap()
                     .0;
                 (addr, self.read(addr))
             }
         };
 
-        let tmp = match ops.size {
-            1 => match ops.hex {
-                0x0a | 0x4a | 0x2a | 0x6a => "A ".to_string(),
+        let tmp = match op.size {
+            1 => match op.addressing_mode {
+                AddressingMode::Accumulator => "A ".to_string(),
                 _ => String::from(""),
             },
             2 => {
                 let address: u8 = self.read(begin + 1);
                 hex_dump.push(address);
 
-                match ops.addressing_mode {
+                match op.addressing_mode {
                     AddressingMode::Immediate => format!("#${:02x}", address),
                     AddressingMode::ZeroPage => {
                         format!("${:02x} = {:02x}", mem_addr, self.read(mem_addr))
@@ -72,31 +72,31 @@ impl Loggable for CPU {
                     | AddressingMode::Accumulator
                     | AddressingMode::Relative
                     | AddressingMode::Indirect => {
-                        // assuming local jumps: BNE, BVS, etc....
-                        let address: usize =
-                            (begin as usize + 2).wrapping_add((address as i8) as usize);
-                        format!("${:04x}", address)
+                        format!(
+                            "${:04x}",
+                            (begin as u16 + 2).wrapping_add((address as i8) as u16)
+                        )
                     }
                     _ => panic!(
                         "Unexpected addressing mode: {:?} for opcode: {:?}",
-                        ops.addressing_mode, ops
+                        op.addressing_mode, op
                     ),
                 }
             }
             3 => {
                 let address_lo = self.read(begin + 1);
                 let address_hi = self.read(begin + 2);
+                let address = (address_hi as u16) << 8 | (address_lo as u16);
+
                 hex_dump.push(address_lo);
                 hex_dump.push(address_hi);
 
-                let address = self.read_16(begin + 1);
-
-                match ops.addressing_mode {
+                match op.addressing_mode {
                     AddressingMode::Implicit
                     | AddressingMode::Accumulator
                     | AddressingMode::Relative
                     | AddressingMode::Indirect => {
-                        if ops.hex == 0x6c {
+                        if op.hex == 0x6c {
                             //jmp indirect
                             let jmp_addr = if address & 0x00FF == 0x00FF {
                                 let lo = self.read(address);
@@ -111,7 +111,7 @@ impl Loggable for CPU {
                         }
                     }
                     AddressingMode::Absolute => {
-                        if !ops.name.starts_with('J') {
+                        if !op.name.starts_with('J') {
                             format!("${:04x} = {:02x}", mem_addr, stored_value)
                         } else {
                             format!("${:04x}", address)
@@ -131,7 +131,7 @@ impl Loggable for CPU {
                     }
                     _ => panic!(
                         "unexpected addressing mode {:?} has ops-len 3. code {:02x}",
-                        ops.addressing_mode, ops.hex
+                        op.addressing_mode, op.hex
                     ),
                 }
             }
@@ -143,7 +143,7 @@ impl Loggable for CPU {
             .map(|z| format!("{:02x}", z))
             .collect::<Vec<String>>()
             .join(" ");
-        let asm_str = format!("{:04x}  {:8} {: >4} {}", begin, hex_str, ops.name, tmp)
+        let asm_str = format!("{:04x}  {:8} {: >4} {}", begin, hex_str, op.name, tmp)
             .trim()
             .to_string();
 
