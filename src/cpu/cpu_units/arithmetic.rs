@@ -68,7 +68,8 @@ impl Arithmetic for CPU {
     }
 
     fn cmpr(&mut self, mode: AddressingMode, reg: Register) {
-        let val = self.read(self.get_operand_addr(mode).unwrap());
+        let addr = self.get_operand_addr(mode).unwrap();
+        let val = self.read(addr);
         let register_val = match reg {
             Register::A => self.acc,
             Register::X => self.x,

@@ -1,7 +1,15 @@
-pub mod mapper_0;
+pub mod nrom;
+
+pub enum Mirroring {
+    Horizontal,
+    Vertical,
+    FourScreen,
+}
 
 pub trait Mapper {
-    fn load_prg_rom(&mut self, prg_rom: Vec<u8>);
+    fn get_mirroring(&self) -> Mirroring;
+
+    fn get_chr_rom(&self) -> &[u8];
 
     fn read(&self, addr: u16) -> u8;
 

@@ -56,8 +56,9 @@ impl LoadStore for CPU {
     }
 
     fn st(&mut self, mode: AddressingMode, regs: Vec<Register>) {
+        let addr = self.get_operand_addr(mode).unwrap();
         self.write(
-            self.get_operand_addr(mode).unwrap(),
+            addr,
             regs.iter().fold(0xff, |acc, r| {
                 acc & match r {
                     Register::X => self.x,

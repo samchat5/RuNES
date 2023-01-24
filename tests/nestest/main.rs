@@ -2,7 +2,7 @@ use nes::{cpu::CPU, ines_parser::File};
 
 #[test]
 fn test_nestest() {
-    let mut cpu = CPU::new();
+    let mut cpu = CPU::new(File::new("tests/nestest/nestest.nes"));
     cpu.set_sink(Box::new(
         std::fs::File::options()
             .create(true)
@@ -11,8 +11,6 @@ fn test_nestest() {
             .open("tests/nestest/log.log")
             .unwrap(),
     ));
-
-    cpu.load_prg_rom(File::new("tests/nestest/nestest.nes"));
     cpu.reset_with_val(0xc000);
     cpu.run(26554);
 

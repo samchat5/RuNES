@@ -53,7 +53,8 @@ impl Logical for CPU {
     }
 
     fn bit(&mut self, mode: AddressingMode) {
-        let val = self.read(self.get_operand_addr(mode).unwrap());
+        let addr = self.get_operand_addr(mode).unwrap();
+        let val = self.read(addr);
         self.status.set(Status::ZERO, (val & self.acc) == 0);
         self.status.set(Status::NEGATIVE, val & 0x80 != 0);
         self.status.set(Status::OVERFLOW, val & 0x40 != 0);

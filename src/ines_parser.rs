@@ -1,14 +1,14 @@
-#![allow(non_camel_case_types, dead_code, clippy::upper_case_acronyms)]
+#![allow(non_camel_case_types, clippy::upper_case_acronyms)]
 
 const NES_MAGIC: [u8; 4] = [0x4e, 0x45, 0x53, 0x1a];
 
-enum NameTableMirrorType {
+pub enum NameTableMirrorType {
     HORIZONTAL_OR_MAPPER,
     VERTICAL,
 }
 
 impl NameTableMirrorType {
-    fn get(val: u8) -> Self {
+    pub fn get(val: u8) -> Self {
         match val {
             0 => NameTableMirrorType::HORIZONTAL_OR_MAPPER,
             1 => NameTableMirrorType::VERTICAL,
@@ -19,7 +19,7 @@ impl NameTableMirrorType {
 
 #[derive(Clone, Copy, Debug)]
 struct Flags1(u8);
-enum Flags1Enum {
+pub enum Flags1Enum {
     NAME_TABLE_MIRROR,
     BATTERY,
     TRAINER,
@@ -39,14 +39,14 @@ impl Flags1 {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Flags2(u8);
-enum Flags2Enum {
+pub struct Flags2(u8);
+pub enum Flags2Enum {
     CONSOLE_TYPE,
     MAGIC,
     MAPPER_NUM,
 }
 impl Flags2 {
-    fn get(self, arg: Flags2Enum) -> u8 {
+    pub fn get(self, arg: Flags2Enum) -> u8 {
         match arg {
             Flags2Enum::CONSOLE_TYPE => self.0 & 0x03,
             Flags2Enum::MAGIC => (self.0 & 0x0c) >> 2,
@@ -56,13 +56,13 @@ impl Flags2 {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct MapperMSB(u8);
-enum MapperMSBEnum {
+pub struct MapperMSB(u8);
+pub enum MapperMSBEnum {
     MAPPER_NUM,
     SUBMAPPER_NUM,
 }
 impl MapperMSB {
-    fn get(self, arg: MapperMSBEnum) -> u8 {
+    pub fn get(self, arg: MapperMSBEnum) -> u8 {
         match arg {
             MapperMSBEnum::MAPPER_NUM => self.0 & 0x0f,
             MapperMSBEnum::SUBMAPPER_NUM => (self.0 & 0xf0) >> 4,
@@ -86,13 +86,13 @@ impl ROMSizeMSB {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct PRGRAMEEPROMSize(u8);
-enum PRGRAMEEPROMSizeEnum {
+pub struct PRGRAMEEPROMSize(u8);
+pub enum PRGRAMEEPROMSizeEnum {
     PRG_RAM_SIZE,
     EEPROM_SIZE,
 }
 impl PRGRAMEEPROMSize {
-    fn get(self, arg: PRGRAMEEPROMSizeEnum) -> u8 {
+    pub fn get(self, arg: PRGRAMEEPROMSizeEnum) -> u8 {
         match arg {
             PRGRAMEEPROMSizeEnum::PRG_RAM_SIZE => self.0 & 0x0f,
             PRGRAMEEPROMSizeEnum::EEPROM_SIZE => (self.0 & 0xf0) >> 4,
@@ -101,13 +101,13 @@ impl PRGRAMEEPROMSize {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct CHRRAMSize(u8);
-enum CHRRAMSizeEnum {
+pub struct CHRRAMSize(u8);
+pub enum CHRRAMSizeEnum {
     CHR_RAM_SIZE,
     CHR_NVRAM_SIZE,
 }
 impl CHRRAMSize {
-    fn get(self, arg: CHRRAMSizeEnum) -> u8 {
+    pub fn get(self, arg: CHRRAMSizeEnum) -> u8 {
         match arg {
             CHRRAMSizeEnum::CHR_RAM_SIZE => self.0 & 0x0f,
             CHRRAMSizeEnum::CHR_NVRAM_SIZE => (self.0 & 0xf0) >> 4,
@@ -116,21 +116,21 @@ impl CHRRAMSize {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Timing(u8);
+pub struct Timing(u8);
 impl Timing {
-    fn get(self) -> u8 {
+    pub fn get(self) -> u8 {
         self.0 & 0x03
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-struct VsSystemType(u8);
-enum VsSystemTypeEnum {
+pub struct VsSystemType(u8);
+pub enum VsSystemTypeEnum {
     PPU_TYPE,
     HARDWARE_TYPE,
 }
 impl VsSystemType {
-    fn get(self, arg: VsSystemTypeEnum) -> u8 {
+    pub fn get(self, arg: VsSystemTypeEnum) -> u8 {
         match arg {
             VsSystemTypeEnum::PPU_TYPE => self.0 & 0x0f,
             VsSystemTypeEnum::HARDWARE_TYPE => (self.0 & 0xf0) >> 4,
@@ -139,25 +139,25 @@ impl VsSystemType {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct ExtendedConsoleType(u8);
+pub struct ExtendedConsoleType(u8);
 impl ExtendedConsoleType {
-    fn get(self) -> u8 {
+    pub fn get(self) -> u8 {
         self.0 & 0x0f
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-struct MiscROMs(u8);
+pub struct MiscROMs(u8);
 impl MiscROMs {
-    fn get(self) -> u8 {
+    pub fn get(self) -> u8 {
         self.0 & 0x03
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-struct DefaultExpansionDevice(u8);
+pub struct DefaultExpansionDevice(u8);
 impl DefaultExpansionDevice {
-    fn get(self) -> u8 {
+    pub fn get(self) -> u8 {
         self.0 & 0x3f
     }
 }
@@ -171,48 +171,48 @@ enum ConsoleType {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Header {
-    magic: [u8; 4],
+    _magic: [u8; 4],
     prg_rom_size_lsb: u8,
     chr_rom_size_lsb: u8,
     flags1: Flags1,
-    flags2: Flags2,
-    mapper_msb: MapperMSB,
+    _flags2: Flags2,
+    _mapper_msb: MapperMSB,
     rom_size_msb: ROMSizeMSB,
-    prg_ram_eeprom_size: PRGRAMEEPROMSize,
-    chr_ram_size: CHRRAMSize,
-    timing: Timing,
-    console_type: ConsoleType,
-    misc_roms: MiscROMs,
-    default_expansion_device: DefaultExpansionDevice,
+    _prg_ram_eeprom_size: PRGRAMEEPROMSize,
+    _chr_ram_size: CHRRAMSize,
+    _timing: Timing,
+    _console_type: ConsoleType,
+    _misc_roms: MiscROMs,
+    _default_expansion_device: DefaultExpansionDevice,
 }
 
 impl Header {
-    fn new(bytes: [u8; 16]) -> Self {
+    pub fn new(bytes: [u8; 16]) -> Self {
         assert!(bytes[0..4] == NES_MAGIC);
         // assert!(bytes[7] & 0x0c == 0x08);
         Header {
-            magic: NES_MAGIC,
+            _magic: NES_MAGIC,
             prg_rom_size_lsb: bytes[4],
             chr_rom_size_lsb: bytes[5],
             flags1: Flags1(bytes[6]),
-            flags2: Flags2(bytes[7]),
-            mapper_msb: MapperMSB(bytes[8]),
+            _flags2: Flags2(bytes[7]),
+            _mapper_msb: MapperMSB(bytes[8]),
             rom_size_msb: ROMSizeMSB(bytes[9]),
-            prg_ram_eeprom_size: PRGRAMEEPROMSize(bytes[10]),
-            chr_ram_size: CHRRAMSize(bytes[11]),
-            timing: Timing(bytes[12]),
-            console_type: match bytes[7] & 0x03 {
+            _prg_ram_eeprom_size: PRGRAMEEPROMSize(bytes[10]),
+            _chr_ram_size: CHRRAMSize(bytes[11]),
+            _timing: Timing(bytes[12]),
+            _console_type: match bytes[7] & 0x03 {
                 1 => ConsoleType::VsSystemType(VsSystemType(bytes[13])),
                 3 => ConsoleType::Extended(ExtendedConsoleType(bytes[13])),
                 _ => ConsoleType::_Unused(bytes[13]),
             },
-            misc_roms: MiscROMs(bytes[14]),
-            default_expansion_device: DefaultExpansionDevice(bytes[15]),
+            _misc_roms: MiscROMs(bytes[14]),
+            _default_expansion_device: DefaultExpansionDevice(bytes[15]),
         }
     }
 }
 
-fn get_prg_rom_size(header: Header) -> usize {
+pub fn get_prg_rom_size(header: Header) -> usize {
     if header.rom_size_msb.get(ROMSizeMSBEnum::PRG) == 0xF {
         (2_u32.pow((header.prg_rom_size_lsb & 0xFC) as u32)
             * ((header.prg_rom_size_lsb & 0x03) * 2 + 1) as u32) as usize
@@ -223,7 +223,7 @@ fn get_prg_rom_size(header: Header) -> usize {
     }
 }
 
-fn get_chr_rom_size(header: Header) -> usize {
+pub fn get_chr_rom_size(header: Header) -> usize {
     if header.rom_size_msb.get(ROMSizeMSBEnum::CHR) == 0xF {
         (2_u32.pow((header.chr_rom_size_lsb & 0xFC) as u32)
             * ((header.chr_rom_size_lsb & 0x03) * 2 + 1) as u32) as usize

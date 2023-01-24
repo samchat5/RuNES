@@ -1,24 +1,22 @@
-use super::Mapper;
+use super::{Mapper, Mirroring};
 
-pub struct Mapper0 {
+pub struct NROM {
     pub undefined_area: [u8; 0x3fe0],
     pub prg_rom: Vec<u8>,
+    pub chr_rom: Vec<u8>,
 }
 
-impl Mapper0 {
-    pub fn new(prg_rom: Vec<u8>) -> Self {
+impl NROM {
+    pub fn new(prg_rom: Vec<u8>, chr_rom: Vec<u8>) -> Self {
         Self {
             undefined_area: [0; 0x3fe0],
             prg_rom,
+            chr_rom,
         }
     }
 }
 
-impl Mapper for Mapper0 {
-    fn load_prg_rom(&mut self, prg_rom: Vec<u8>) {
-        self.prg_rom = prg_rom;
-    }
-
+impl Mapper for NROM {
     fn read(&self, addr: u16) -> u8 {
         if addr < 0x7FFF {
             self.undefined_area[(addr - 0x4020) as usize]
@@ -42,5 +40,13 @@ impl Mapper for Mapper0 {
                 self.prg_rom[(addr - 0x8000) as usize] = data;
             }
         }
+    }
+
+    fn get_mirroring(&self) -> Mirroring {
+        Mirroring::Horizontal
+    }
+
+    fn get_chr_rom(&self) -> &[u8] {
+        &self.chr_rom
     }
 }

@@ -86,14 +86,8 @@ pub struct CPU {
     pub sink: Box<dyn Write + Send>,
 }
 
-impl Default for CPU {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl CPU {
-    pub fn new() -> Self {
+    pub fn new(file: File) -> Self {
         Self {
             x: 0,
             y: 0,
@@ -101,7 +95,7 @@ impl CPU {
             sp: 0xFD,
             pc: 0,
             status: Status { bits: 0x24 },
-            bus: Box::new(Bus::new()),
+            bus: Box::new(Bus::new(file)),
             cycles: 0,
             sink: Box::new(io::sink()),
         }
@@ -111,7 +105,7 @@ impl CPU {
         self.sink = stream;
     }
 
-    pub fn read(&self, addr: u16) -> u8 {
+    pub fn read(&mut self, addr: u16) -> u8 {
         self.bus.read(addr)
     }
 
@@ -119,7 +113,7 @@ impl CPU {
         self.bus.write(addr, val);
     }
 
-    pub fn read_16(&self, addr: u16) -> u16 {
+    pub fn read_16(&mut self, addr: u16) -> u16 {
         self.bus.read_16(addr)
     }
 
@@ -144,11 +138,7 @@ impl CPU {
         (hi << 8) | lo
     }
 
-    pub fn load_prg_rom(&mut self, cartridge: File) {
-        self.bus.load_prg_rom(cartridge.prg_rom_area);
-    }
-
-    pub fn get_absolute_addr(&self, mode: AddressingMode, addr: u16) -> Option<(u16, bool)> {
+    pub fn get_absolute_addr(&mut self, mode: AddressingMode, addr: u16) -> Option<(u16, bool)> {
         match mode {
             AddressingMode::Immediate => Some((addr, false)),
             AddressingMode::ZeroPage => Some((self.read(addr) as u16, false)),
@@ -184,12 +174,13 @@ impl CPU {
         }
     }
 
-    pub fn get_operand_addr(&self, mode: AddressingMode) -> Option<u16> {
+    pub fn get_operand_addr(&mut self, mode: AddressingMode) -> Option<u16> {
         self.get_absolute_addr(mode, self.pc).map(|(addr, _)| addr)
     }
 
     pub fn reset(&mut self) {
-        self.reset_with_val(self.read_16(0xFFFC));
+        let val = self.read_16(0xFFFC);
+        self.reset_with_val(val);
     }
 
     pub fn reset_with_val(&mut self, val: u16) {

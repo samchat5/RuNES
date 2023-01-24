@@ -4,6 +4,12 @@ pub struct Address {
     writing_hi: bool,
 }
 
+impl Default for Address {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Address {
     pub fn new() -> Address {
         Address {
@@ -22,7 +28,12 @@ impl Address {
         self.writing_hi = !self.writing_hi;
     }
 
-    pub fn read(&self) -> u16 {
+    pub(super) fn read(&self) -> u16 {
         (self.hi as u16) << 8 | self.lo as u16
+    }
+
+    pub(super) fn increment(&mut self, inc: u16) {
+        let addr = self.read();
+        self.write((addr + inc) as u8);
     }
 }
