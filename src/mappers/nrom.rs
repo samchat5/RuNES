@@ -1,5 +1,6 @@
 use super::{Mapper, Mirroring};
 
+#[derive(Clone)]
 pub struct NROM {
     pub undefined_area: [u8; 0x3fe0],
     pub prg_rom: Vec<u8>,
@@ -17,6 +18,14 @@ impl NROM {
 }
 
 impl Mapper for NROM {
+    fn get_mirroring(&self) -> Mirroring {
+        Mirroring::Horizontal
+    }
+
+    fn get_chr_rom(&self) -> &[u8] {
+        &self.chr_rom
+    }
+
     fn read(&self, addr: u16) -> u8 {
         if addr < 0x7FFF {
             self.undefined_area[(addr - 0x4020) as usize]
@@ -40,13 +49,5 @@ impl Mapper for NROM {
                 self.prg_rom[(addr - 0x8000) as usize] = data;
             }
         }
-    }
-
-    fn get_mirroring(&self) -> Mirroring {
-        Mirroring::Horizontal
-    }
-
-    fn get_chr_rom(&self) -> &[u8] {
-        &self.chr_rom
     }
 }

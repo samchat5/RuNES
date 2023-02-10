@@ -42,7 +42,7 @@ impl LoadStore for CPU {
     fn ld(&mut self, mode: AddressingMode, regs: Vec<Register>) {
         let (val, inc_cycles) = self.get_absolute_addr(mode, self.pc).unwrap();
         if inc_cycles {
-            self.cycles += 1;
+            self.bus.tick(1);
         }
         let val = self.read(val);
         regs.iter().for_each(|reg| match reg {
@@ -68,5 +68,37 @@ impl LoadStore for CPU {
                 }
             }),
         );
+    }
+
+    fn lax(&mut self, mode: AddressingMode) {
+        self.ld(mode, vec![Register::A, Register::X]);
+    }
+
+    fn lda(&mut self, mode: AddressingMode) {
+        self.ld(mode, vec![Register::A]);
+    }
+
+    fn ldx(&mut self, mode: AddressingMode) {
+        self.ld(mode, vec![Register::X]);
+    }
+
+    fn ldy(&mut self, mode: AddressingMode) {
+        self.ld(mode, vec![Register::Y]);
+    }
+
+    fn sax(&mut self, mode: AddressingMode) {
+        self.st(mode, vec![Register::A, Register::X]);
+    }
+
+    fn sta(&mut self, mode: AddressingMode) {
+        self.st(mode, vec![Register::A]);
+    }
+
+    fn stx(&mut self, mode: AddressingMode) {
+        self.st(mode, vec![Register::X]);
+    }
+
+    fn sty(&mut self, mode: AddressingMode) {
+        self.st(mode, vec![Register::Y]);
     }
 }

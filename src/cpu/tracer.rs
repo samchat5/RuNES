@@ -1,5 +1,6 @@
-use super::{op::OPS, AddressingMode, CPU};
 use std::io::Write;
+
+use super::{op::OPS, AddressingMode, CPU};
 
 pub trait Loggable {
     fn log(&mut self);
@@ -147,7 +148,7 @@ impl Loggable for CPU {
             .trim()
             .to_string();
 
-        let ppu_cycles = self.cycles * 3;
+        let ppu_cycles = self.bus.get_cycles() * 3;
         let ppu_scanline = ppu_cycles / 341;
         let ppu_cycle = ppu_cycles % 341;
 
@@ -161,7 +162,7 @@ impl Loggable for CPU {
             self.sp,
             ppu_scanline,
             ppu_cycle,
-            self.cycles
+            self.bus.get_cycles()
         )
         .to_uppercase();
 

@@ -1,7 +1,7 @@
 #include <std/math.pat>
 #include <std/io.pat>
 
-bitfield Flags1 {
+bitfield Flags1{
     name_table_mirror: 1;
     battery: 1;
     trainer: 1;
@@ -9,54 +9,53 @@ bitfield Flags1 {
     mapper_num: 4;
 };
 
-bitfield Flags2 {
+bitfield Flags2{
     console_type: 2;
     magic: 2;
     mapper_num: 4;
 };
 
-
-bitfield MapperMSB {
+bitfield MapperMSB{
     mapper_num: 4;
     submapper_num: 4;
 };
 
-bitfield ROMSizeMSB {
+bitfield ROMSizeMSB{
     prg: 4;
     chr: 4;
 };
 
-bitfield PRGRAMEEPROMSize {
+bitfield PRGRAMEEPROMSize{
     prg_ram_shift_cnt: 4;
-    eeprom_shift_cnt: 4;    
+    eeprom_shift_cnt: 4;
 };
 
-bitfield CHRRAMSize {
+bitfield CHRRAMSize{
     chr_ram_size: 4;
     chr_nvram_size: 4;
 };
 
-bitfield Timing {
+bitfield Timing{
     mode: 2;
     _unused: 6;
 };
 
-bitfield VsSystemType {
+bitfield VsSystemType{
     ppu_type: 4;
     hardware_type: 4;
 };
 
-bitfield ExtendedConsoleType {
+bitfield ExtendedConsoleType{
     type: 4;
     _unused: 4;
 };
 
-bitfield MiscROMs {
+bitfield MiscROMs{
     misc_rom_num: 2;
     _unused: 6;
 };
 
-bitfield DefaultExpansionDevice {
+bitfield DefaultExpansionDevice{
     device: 6;
     _unused: 2;
 };
@@ -71,7 +70,7 @@ struct Header {
     ROMSizeMSB rom_size_msb;
     PRGRAMEEPROMSize prg_ram_eeprom_size;
     CHRRAMSize chr_ram_size;
-    Timing timing; 
+    Timing timing;
     if (flags2.console_type == 1) {
         VsSystemType type;
     } else if (flags2.console_type == 3) {
@@ -86,45 +85,46 @@ struct Header {
 fn get_prg_rom_size(Header header) {
     if (header.rom_size_msb.prg == 0xF) {
         return std::math::pow(2, header.prg_rom_size_lsb & 0xFC)
-			* ((header.prg_rom_size_lsb & 0x03) * 2 + 1);
+            * ((header.prg_rom_size_lsb & 0x03) * 2 + 1);
     } else {
-        return (u16(header.prg_rom_size_lsb) | 
-			u16(header.rom_size_msb.prg) << 8) * 16384;
+        return (u16(header.prg_rom_size_lsb) |
+            u16(header.rom_size_msb.prg) << 8) * 16384;
     }
 };
 
 fn get_chr_rom_area(Header header) {
     if (header.rom_size_msb.chr == 0xF) {
-        return std::math::pow(2, header.chr_rom_size_lsb & 0xFC) 
-			* ((header.prg_rom_size_lsb & 0x03) * 2 + 1);
+        return std::math::pow(2, header.chr_rom_size_lsb & 0xFC)
+            * ((header.prg_rom_size_lsb & 0x03) * 2 + 1);
     } else {
-        return (u16(header.chr_rom_size_lsb) | 
-			u16(header.rom_size_msb.chr) << 8) * 8192;
-    }    
+        return (u16(header.chr_rom_size_lsb) |
+            u16(header.rom_size_msb.chr) << 8) * 8192;
+    }
 };
 
 struct File {
     // Header
     Header header;
-    
+
     // Trainer Area
     if (header.flags1.trainer) {
         u8 trainer[512];
     }
-    
+
     // PRG-ROM Area
     u8 prg_rom_area[get_prg_rom_size(header)];
-    
+
     // CHR-ROM Area
     if (sizeof($) - $ != 0) {
         u8 chr_rom_area[get_chr_rom_area(header)];
     }
-    
+
     // Misc ROM Area
     if (sizeof($) - $ != 0) {
         u8 misc_rom_area[sizeof($) - $];
     }
 };
 
-File file @ 0x0;
+File file
+@ 0x0;
 

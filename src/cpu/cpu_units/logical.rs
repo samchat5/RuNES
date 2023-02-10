@@ -41,7 +41,7 @@ impl Logical for CPU {
         let (addr, inc_cycles) = self.get_absolute_addr(mode, self.pc).unwrap();
         let val = self.read(addr);
         if inc_cycles && does_inc_cycles {
-            self.cycles += 1;
+            self.bus.tick(1);
         }
         self.acc = match op {
             LogicalOp::AND => self.acc & val,
@@ -58,5 +58,29 @@ impl Logical for CPU {
         self.status.set(Status::ZERO, (val & self.acc) == 0);
         self.status.set(Status::NEGATIVE, val & 0x80 != 0);
         self.status.set(Status::OVERFLOW, val & 0x40 != 0);
+    }
+
+    fn and(&mut self, mode: AddressingMode) {
+        self.bit_op(mode, LogicalOp::AND, true);
+    }
+
+    fn and_no_inc(&mut self, mode: AddressingMode) {
+        self.bit_op(mode, LogicalOp::AND, false);
+    }
+
+    fn ora(&mut self, mode: AddressingMode) {
+        self.bit_op(mode, LogicalOp::ORA, true);
+    }
+
+    fn ora_no_inc(&mut self, mode: AddressingMode) {
+        self.bit_op(mode, LogicalOp::ORA, false);
+    }
+
+    fn eor(&mut self, mode: AddressingMode) {
+        self.bit_op(mode, LogicalOp::EOR, true);
+    }
+
+    fn eor_no_inc(&mut self, mode: AddressingMode) {
+        self.bit_op(mode, LogicalOp::EOR, false);
     }
 }

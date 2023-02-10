@@ -27,16 +27,6 @@ pub trait StackOps {
 }
 
 impl StackOps for CPU {
-    fn tsx(&mut self) {
-        self.x = self.sp;
-        self.status.set(Status::ZERO, self.x == 0);
-        self.status.set(Status::NEGATIVE, self.x & 0x80 != 0);
-    }
-
-    fn txs(&mut self) {
-        self.sp = self.x;
-    }
-
     fn ph(&mut self, reg: Register) {
         self.stack_push(match reg {
             Register::A => self.acc,
@@ -57,5 +47,15 @@ impl StackOps for CPU {
             }
             _ => panic!("Invalid register for pull"),
         }
+    }
+
+    fn tsx(&mut self) {
+        self.x = self.sp;
+        self.status.set(Status::ZERO, self.x == 0);
+        self.status.set(Status::NEGATIVE, self.x & 0x80 != 0);
+    }
+
+    fn txs(&mut self) {
+        self.sp = self.x;
     }
 }

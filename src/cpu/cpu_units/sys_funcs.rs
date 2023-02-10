@@ -6,6 +6,8 @@ pub trait SysFuncs {
     fn brk(&mut self);
 
     fn rti(&mut self);
+
+    fn nmi(&mut self);
 }
 
 impl SysFuncs for CPU {
@@ -14,7 +16,7 @@ impl SysFuncs for CPU {
             Some((_, true)) => 1,
             _ => 0,
         };
-        self.cycles += inc_cycles;
+        self.bus.tick(inc_cycles);
     }
 
     fn brk(&mut self) {
@@ -35,5 +37,16 @@ impl SysFuncs for CPU {
         self.status.remove(Status::BREAK);
         self.status.insert(Status::BREAK2);
         self.pc = self.stack_pop_16();
+    }
+
+    fn nmi(&mut self) {
+        self.stack_push_16(self.pc);
+        let mut status = self.status;
+        status.set(Status::BREAK, false);
+        status.set(Status::BREAK2, true);
+        self.stack_push(status.bits);
+        self.status.insert(Status::INTERRUPT_DISABLE);
+        self.bus.tick(2);
+        self.pc = self.read_16(0xfffa);
     }
 }

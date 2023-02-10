@@ -19,6 +19,7 @@ impl NameTableMirrorType {
 
 #[derive(Clone, Copy, Debug)]
 struct Flags1(u8);
+
 pub enum Flags1Enum {
     NAME_TABLE_MIRROR,
     BATTERY,
@@ -26,8 +27,9 @@ pub enum Flags1Enum {
     FOUR_SCREEN_MODE,
     MAPPER_NUM,
 }
+
 impl Flags1 {
-    fn get(self, arg: Flags1Enum) -> u8 {
+    fn get(&self, arg: Flags1Enum) -> u8 {
         match arg {
             Flags1Enum::NAME_TABLE_MIRROR => self.0 & 0x01,
             Flags1Enum::BATTERY => (self.0 & 0x02) >> 1,
@@ -40,13 +42,15 @@ impl Flags1 {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Flags2(u8);
+
 pub enum Flags2Enum {
     CONSOLE_TYPE,
     MAGIC,
     MAPPER_NUM,
 }
+
 impl Flags2 {
-    pub fn get(self, arg: Flags2Enum) -> u8 {
+    pub fn get(&self, arg: Flags2Enum) -> u8 {
         match arg {
             Flags2Enum::CONSOLE_TYPE => self.0 & 0x03,
             Flags2Enum::MAGIC => (self.0 & 0x0c) >> 2,
@@ -57,12 +61,14 @@ impl Flags2 {
 
 #[derive(Clone, Copy, Debug)]
 pub struct MapperMSB(u8);
+
 pub enum MapperMSBEnum {
     MAPPER_NUM,
     SUBMAPPER_NUM,
 }
+
 impl MapperMSB {
-    pub fn get(self, arg: MapperMSBEnum) -> u8 {
+    pub fn get(&self, arg: MapperMSBEnum) -> u8 {
         match arg {
             MapperMSBEnum::MAPPER_NUM => self.0 & 0x0f,
             MapperMSBEnum::SUBMAPPER_NUM => (self.0 & 0xf0) >> 4,
@@ -72,12 +78,14 @@ impl MapperMSB {
 
 #[derive(Clone, Copy, Debug)]
 struct ROMSizeMSB(u8);
+
 enum ROMSizeMSBEnum {
     PRG,
     CHR,
 }
+
 impl ROMSizeMSB {
-    fn get(self, arg: ROMSizeMSBEnum) -> u8 {
+    fn get(&self, arg: ROMSizeMSBEnum) -> u8 {
         match arg {
             ROMSizeMSBEnum::PRG => self.0 & 0x0f,
             ROMSizeMSBEnum::CHR => (self.0 & 0xf0) >> 4,
@@ -87,12 +95,14 @@ impl ROMSizeMSB {
 
 #[derive(Clone, Copy, Debug)]
 pub struct PRGRAMEEPROMSize(u8);
+
 pub enum PRGRAMEEPROMSizeEnum {
     PRG_RAM_SIZE,
     EEPROM_SIZE,
 }
+
 impl PRGRAMEEPROMSize {
-    pub fn get(self, arg: PRGRAMEEPROMSizeEnum) -> u8 {
+    pub fn get(&self, arg: PRGRAMEEPROMSizeEnum) -> u8 {
         match arg {
             PRGRAMEEPROMSizeEnum::PRG_RAM_SIZE => self.0 & 0x0f,
             PRGRAMEEPROMSizeEnum::EEPROM_SIZE => (self.0 & 0xf0) >> 4,
@@ -102,12 +112,14 @@ impl PRGRAMEEPROMSize {
 
 #[derive(Clone, Copy, Debug)]
 pub struct CHRRAMSize(u8);
+
 pub enum CHRRAMSizeEnum {
     CHR_RAM_SIZE,
     CHR_NVRAM_SIZE,
 }
+
 impl CHRRAMSize {
-    pub fn get(self, arg: CHRRAMSizeEnum) -> u8 {
+    pub fn get(&self, arg: CHRRAMSizeEnum) -> u8 {
         match arg {
             CHRRAMSizeEnum::CHR_RAM_SIZE => self.0 & 0x0f,
             CHRRAMSizeEnum::CHR_NVRAM_SIZE => (self.0 & 0xf0) >> 4,
@@ -117,20 +129,23 @@ impl CHRRAMSize {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Timing(u8);
+
 impl Timing {
-    pub fn get(self) -> u8 {
+    pub fn get(&self) -> u8 {
         self.0 & 0x03
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct VsSystemType(u8);
+
 pub enum VsSystemTypeEnum {
     PPU_TYPE,
     HARDWARE_TYPE,
 }
+
 impl VsSystemType {
-    pub fn get(self, arg: VsSystemTypeEnum) -> u8 {
+    pub fn get(&self, arg: VsSystemTypeEnum) -> u8 {
         match arg {
             VsSystemTypeEnum::PPU_TYPE => self.0 & 0x0f,
             VsSystemTypeEnum::HARDWARE_TYPE => (self.0 & 0xf0) >> 4,
@@ -140,24 +155,27 @@ impl VsSystemType {
 
 #[derive(Clone, Copy, Debug)]
 pub struct ExtendedConsoleType(u8);
+
 impl ExtendedConsoleType {
-    pub fn get(self) -> u8 {
+    pub fn get(&self) -> u8 {
         self.0 & 0x0f
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct MiscROMs(u8);
+
 impl MiscROMs {
-    pub fn get(self) -> u8 {
+    pub fn get(&self) -> u8 {
         self.0 & 0x03
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct DefaultExpansionDevice(u8);
+
 impl DefaultExpansionDevice {
-    pub fn get(self) -> u8 {
+    pub fn get(&self) -> u8 {
         self.0 & 0x3f
     }
 }
@@ -188,7 +206,7 @@ pub struct Header {
 
 impl Header {
     pub fn new(bytes: [u8; 16]) -> Self {
-        assert!(bytes[0..4] == NES_MAGIC);
+        assert_eq!(bytes[0..4], NES_MAGIC);
         // assert!(bytes[7] & 0x0c == 0x08);
         Header {
             _magic: NES_MAGIC,

@@ -1,12 +1,9 @@
-mod cpu_units;
-mod op;
-mod tracer;
-
 use core::panic;
 use std::io::{self, Write};
 
-use crate::{bus::Bus, ines_parser::File};
 use bitflags::bitflags;
+
+use crate::bus::Bus;
 
 use self::{
     cpu_units::{
@@ -16,8 +13,12 @@ use self::{
         sys_funcs::SysFuncs,
     },
     op::OPS,
-    tracer::Loggable,
+    // tracer::Loggable,
 };
+
+mod cpu_units;
+mod op;
+mod tracer;
 
 bitflags! {
     pub struct Status: u8 {
@@ -77,26 +78,22 @@ pub struct CPU {
     pub status: Status,
 
     // Memory
-    pub bus: Box<Bus>,
-
-    // Cycles
-    pub cycles: u64,
+    pub bus: Bus,
 
     // Logger
     pub sink: Box<dyn Write + Send>,
 }
 
 impl CPU {
-    pub fn new(file: File) -> Self {
-        Self {
+    pub fn new(bus: Bus) -> Self {
+        CPU {
             x: 0,
             y: 0,
             acc: 0,
             sp: 0xFD,
             pc: 0,
             status: Status { bits: 0x24 },
-            bus: Box::new(Bus::new(file)),
-            cycles: 0,
+            bus,
             sink: Box::new(io::sink()),
         }
     }
@@ -185,12 +182,16 @@ impl CPU {
 
     pub fn reset_with_val(&mut self, val: u16) {
         self.pc = val;
-        self.cycles = 7;
+        self.bus.tick(7);
     }
 
     pub fn run(&mut self, cycles: u64) {
-        self.log();
-        while self.cycles < cycles {
+        // self.log();
+        while self.bus.get_cycles() < cycles {
+            if self.bus.poll_nmi() {
+                self.nmi();
+            }
+
             let opcode = self.read(self.pc);
             let op = &OPS[OPS.binary_search_by_key(&opcode, |op| op.hex).unwrap()];
 
@@ -271,9 +272,9 @@ impl CPU {
                 self.pc += op.size - 1;
             }
 
-            self.cycles += op.cycles as u64;
+            self.bus.tick(op.cycles as u64);
 
-            self.log();
+            // self.log();
         }
     }
 }

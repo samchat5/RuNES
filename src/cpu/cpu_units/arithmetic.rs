@@ -63,7 +63,7 @@ impl Arithmetic for CPU {
         self.acc = result;
 
         if inc_cycle && does_inc_cycle {
-            self.cycles += 1;
+            self.bus.tick(1);
         }
     }
 

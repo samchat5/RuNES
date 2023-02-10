@@ -39,11 +39,11 @@ pub trait Branches {
 impl Branches for CPU {
     fn branch(&mut self, flag: Status, set: bool) {
         if self.status.contains(flag) == set {
-            self.cycles += 1;
+            self.bus.tick(1);
             let jump = self.read(self.pc) as i8;
             let addr = self.pc.wrapping_add(1).wrapping_add(jump as u16);
             if self.pc.wrapping_add(1) & 0xff00 != addr & 0xff00 {
-                self.cycles += 1;
+                self.bus.tick(1);
             }
             self.pc = addr;
         }
