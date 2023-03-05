@@ -2,6 +2,7 @@ use sdl2::pixels::Color;
 
 pub struct Frame {
     pub image: [u8; 256 * 240 * 3],
+    pub is_zero: [[bool; 256]; 240],
 }
 
 impl Default for Frame {
@@ -14,6 +15,7 @@ impl Frame {
     pub fn new() -> Frame {
         Frame {
             image: [0; 256 * 240 * 3],
+            is_zero: [[false; 256]; 240],
         }
     }
 

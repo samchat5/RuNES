@@ -1,20 +1,28 @@
 use sdl2::{event::Event, keyboard::Keycode, pixels::PixelFormatEnum};
+use std::collections::HashMap;
 
-use nes::{bus::Bus, cpu::CPU, frame::Frame, ines_parser::File, ppu::PPU};
+use nes::joypad::{Buttons, Joypad};
+use nes::{bus::Bus, cpu::CPU, ines_parser::File, ppu::PPU};
 
 fn main() {
-    let scale_x = 1f32;
-    let scale_y = 1f32;
+    let scale_x = 3f32;
+    let scale_y = 3f32;
+
+    let mut key_map = HashMap::new();
+    key_map.insert(Keycode::W, Buttons::UP);
+    key_map.insert(Keycode::S, Buttons::DOWN);
+    key_map.insert(Keycode::D, Buttons::RIGHT);
+    key_map.insert(Keycode::A, Buttons::LEFT);
+    key_map.insert(Keycode::U, Buttons::SELECT);
+    key_map.insert(Keycode::I, Buttons::START);
+    key_map.insert(Keycode::K, Buttons::A);
+    key_map.insert(Keycode::J, Buttons::B);
 
     // Init sdl2
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
     let window = video_subsystem
-        .window(
-            "Tile viewer",
-            (256.0 * scale_x) as u32,
-            (240.0 * scale_y) as u32,
-        )
+        .window("NES", (256.0 * scale_x) as u32, (240.0 * scale_y) as u32)
         .position_centered()
         .build()
         .unwrap();
@@ -31,7 +39,9 @@ fn main() {
     // Load the game
     let rom = File::new("roms/pacman.nes");
 
-    let bus = Bus::new(rom, move |ppu: &PPU| {
+    let timer = sdl_context.timer().unwrap();
+    let bus = Bus::new(rom, move |ppu, joypad| {
+        let start_ticks = timer.ticks();
         let frame = ppu.render();
         texture.update(None, &(frame).image, 256 * 3).unwrap();
         canvas.copy(&texture, None, None).unwrap();
@@ -43,9 +53,23 @@ fn main() {
                     keycode: Some(Keycode::Escape),
                     ..
                 } => std::process::exit(0),
+                Event::KeyDown { keycode, .. } => {
+                    if let Some(button) = key_map.get(&keycode.unwrap()) {
+                        println!("{:?} ", button);
+                        joypad.buttons.set(*button, true)
+                    }
+                }
+                Event::KeyUp { keycode, .. } => {
+                    if let Some(button) = key_map.get(&keycode.unwrap()) {
+                        println!("{:?} ", button);
+                        joypad.buttons.set(*button, false)
+                    }
+                }
                 _ => (),
             }
         }
+        let end_ticks = timer.ticks();
+        println!("Frame time: {} ms", end_ticks - start_ticks)
     });
 
     let mut cpu = CPU::new(bus);

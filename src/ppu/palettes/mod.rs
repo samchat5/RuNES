@@ -4,7 +4,7 @@ use itertools::Itertools;
 use sdl2::pixels::Color;
 
 pub struct Palette {
-    pub colors: [Color; 0x40],
+    pub system_palette: [Color; 0x40],
 }
 
 impl Default for Palette {
@@ -18,7 +18,7 @@ impl Palette {
         let file = File::open(path).unwrap();
         let reader = file.bytes();
         Palette {
-            colors: reader
+            system_palette: reader
                 .chunks(3)
                 .into_iter()
                 .map(|mut chunk| {

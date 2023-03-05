@@ -84,8 +84,8 @@ pub struct CPU<'a> {
     pub sink: Box<dyn Write + Send>,
 }
 
-impl<'a> CPU<'a> {
-    pub fn new(bus: Bus<'a>) -> CPU<'a> {
+impl CPU<'_> {
+    pub fn new(bus: Bus) -> CPU {
         CPU {
             x: 0,
             y: 0,

@@ -1,8 +1,10 @@
+use std::collections::HashSet;
 use std::{cell::RefCell, rc::Rc};
 
 use itertools::Itertools;
 use sdl2::pixels::Color;
 
+use crate::ppu::palettes::Palette;
 use crate::{
     frame::Frame,
     mappers::{Mapper, Mirroring},
@@ -19,6 +21,9 @@ pub struct PPU {
     status: Status,
     mask: Mask,
 
+    oam_addr: u8,
+    oam: [u8; 0x100],
+
     name_table0: [u8; 0x0400],
     name_table1: [u8; 0x0400],
     name_table2: [u8; 0x0400],
@@ -28,7 +33,7 @@ pub struct PPU {
     pattern_table1: [u8; 0x1000],
 
     palette: [u8; 0x0020],
-    // colors: Palette,
+    colors: Palette,
     buffer: u8,
     mapper: Rc<RefCell<dyn Mapper>>,
     cycles: u64,
@@ -43,6 +48,8 @@ impl PPU {
             ctrl: Control::new(),
             status: Status::new(),
             mask: Mask::new(),
+            oam_addr: 0,
+            oam: [0; 0x100],
             name_table0: [0; 0x0400],
             name_table1: [0; 0x0400],
             name_table2: [0; 0x0400],
@@ -54,7 +61,7 @@ impl PPU {
                 .try_into()
                 .unwrap(),
             palette: [0; 0x0020],
-            // colors: Palette::default(),
+            colors: Palette::default(),
             mapper: mapper.clone(),
             buffer: 0,
             cycles: 0,
@@ -77,44 +84,16 @@ impl PPU {
         // Each bank has 256 tiles
         (0usize..960).for_each(|n| {
             let t = name_table[n] as usize;
-            let x = (n % tiles_per_row) * tile_size;
-            let y = (n / tiles_per_row) * tile_size;
+
+            let tile_col = n % tiles_per_row;
+            let tile_row = n / tiles_per_row;
+            let x = tile_col * tile_size;
+            let y = tile_row * tile_size;
+            let pal = self.get_attribute_table_idx(tile_row, tile_col);
+
             let range = (t % 256) * 16..((t % 256) * 16 + 16);
             let tile = &pattern_table[range];
-            (0..8).cartesian_product(0..8).for_each(|(py, px)| {
-                let upper = tile[py];
-                let lower = tile[py + 8];
 
-                let mask = 7 - px;
-                let bit1 = 1 & (upper >> mask);
-                let bit0 = 1 & (lower >> mask);
-                let val = (bit1 << 1) | bit0;
-
-                let color = self.get_color(val);
-                frame.set_pixel(x + px, y + py, color);
-            });
-        });
-
-        frame
-    }
-
-    pub fn render_tiles(&self) -> Frame {
-        // Each tile is 16 bytes
-        let mut frame = Frame::new();
-        let tile_gap = 2;
-        let tile_size = 8 + tile_gap;
-        let tiles_per_row = 25;
-
-        // Each bank has 256 tiles
-        (0usize..512).for_each(|n| {
-            let x = (n % tiles_per_row) * tile_size;
-            let y = (n / tiles_per_row) * tile_size;
-            let range = (n % 256) * 16..((n % 256) * 16 + 16);
-            let tile = if n < 256 {
-                &self.pattern_table0[range]
-            } else {
-                &self.pattern_table1[range]
-            };
             (0..8).cartesian_product(0..8).for_each(|(py, px)| {
                 let lower = tile[py];
                 let upper = tile[py + 8];
@@ -124,10 +103,56 @@ impl PPU {
                 let bit0 = 1 & (lower >> mask);
                 let val = (bit1 << 1) | bit0;
 
-                let color = self.get_color(val);
+                if val == 0 {
+                    frame.is_zero[y + py][x + px] = true;
+                }
+
+                let color = pal[val as usize];
                 frame.set_pixel(x + px, y + py, color);
             });
         });
+
+        let pattern_table =
+            self.get_pattern_table_from_bool(self.ctrl.contains(Control::SPRITE_PATTERN_ADDR));
+
+        self.oam.chunks_exact(4).rev().for_each(|c| {
+            let tile_y = c[0];
+            let tile_idx = c[1];
+            let attr = c[2];
+            let tile_x = c[3];
+
+            let flip_vert = attr & 0x80 == 0x80;
+            let flip_horiz = attr & 0x40 == 0x40;
+            let priority = attr & 0x20 == 0x20;
+
+            let range = tile_idx as usize * 16..tile_idx as usize * 16 + 16;
+            let tile = &pattern_table[range];
+            let pal = self.get_attribute_table_idx_sprite(attr & 0b11);
+
+            (0..8).cartesian_product(0..8).for_each(|(py, px)| {
+                let lower = tile[py];
+                let upper = tile[py + 8];
+
+                let mask = 7 - px;
+                let bit1 = 1 & (upper >> mask);
+                let bit0 = 1 & (lower >> mask);
+                let val = (bit1 << 1) | bit0;
+
+                let x = tile_x as usize + if flip_horiz { 7 - px } else { px };
+                let y = tile_y as usize + if flip_vert { 7 - py } else { py };
+
+                // A = !background_zero.contains(&(x, y)) => true if background is not zero
+                // B = val != 0x00 => true if sprite is not zero
+                // C = priority => true if sprite has priority
+                // (!A && B) || (B && !C)
+                // B && (!A || !C)
+                if val != 0x00 && (frame.is_zero[y][x] || !priority) {
+                    let color = pal[val as usize];
+                    frame.set_pixel(x, y, color);
+                }
+            });
+        });
+
         frame
     }
 
@@ -227,6 +252,29 @@ impl PPU {
         }
     }
 
+    pub fn write_oamaddr(&mut self, val: u8) {
+        self.oam_addr = val;
+    }
+
+    pub fn write_oamdata(&mut self, val: u8) {
+        self.oam[self.oam_addr as usize] = val;
+        self.oam_addr = self.oam_addr.wrapping_add(1);
+    }
+
+    pub fn read_oamdata(&self) -> u8 {
+        self.oam[self.oam_addr as usize]
+    }
+
+    pub fn write_oamdma(&mut self, data: [u8; 256]) {
+        self.oam = data;
+        self.oam_addr = self.oam_addr.wrapping_add(1);
+    }
+
+    fn is_rendering(&self) -> bool {
+        self.mask
+            .contains(Mask::SHOW_SPRITES & Mask::SHOW_BACKGROUND)
+    }
+
     fn write_to_nametable(&mut self, addr: usize, data: u8) {
         let mirroring = self.mapper.borrow().get_mirroring();
         match mirroring {
@@ -290,16 +338,6 @@ impl PPU {
             });
     }
 
-    fn get_color(&self, val: u8) -> Color {
-        match val {
-            0 => Color::RGB(0, 0, 0),
-            1 => Color::RGB(102, 102, 102),
-            2 => Color::RGB(187, 187, 187),
-            3 => Color::RGB(255, 255, 255),
-            _ => unreachable!(),
-        }
-    }
-
     fn get_from_nametable(&self, addr: usize) -> u8 {
         match addr {
             0x2000..=0x23ff => self.name_table0[addr - 0x2000],
@@ -326,5 +364,31 @@ impl PPU {
             (true, false) => &self.name_table2,
             (true, true) => &self.name_table3,
         }
+    }
+
+    fn get_attribute_table_idx(&self, row: usize, col: usize) -> Vec<Color> {
+        let attr_table_idx = row / 4 * 8 + col / 4;
+        let byte = self.name_table0[0x3c0 + attr_table_idx];
+        let palette_idx = match (col % 4 / 2, row % 4 / 2) {
+            (0, 0) => byte & 0x3,
+            (1, 0) => (byte >> 2) & 0x3,
+            (0, 1) => (byte >> 4) & 0x3,
+            (1, 1) => (byte >> 6) & 0x3,
+            _ => unreachable!(),
+        };
+        self.get_from_sys_palette((4 * palette_idx + 1) as usize)
+    }
+
+    fn get_attribute_table_idx_sprite(&self, palette_idx: u8) -> Vec<Color> {
+        self.get_from_sys_palette((4 * palette_idx + 0x11) as usize)
+    }
+
+    fn get_from_sys_palette(&self, start: usize) -> Vec<Color> {
+        vec![
+            self.colors.system_palette[self.palette[0] as usize],
+            self.colors.system_palette[self.palette[start] as usize],
+            self.colors.system_palette[self.palette[start + 1] as usize],
+            self.colors.system_palette[self.palette[start + 2] as usize],
+        ]
     }
 }
