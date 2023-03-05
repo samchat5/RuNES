@@ -36,7 +36,7 @@ pub trait Branches {
     }
 }
 
-impl Branches for CPU {
+impl Branches for CPU<'_> {
     fn branch(&mut self, flag: Status, set: bool) {
         if self.status.contains(flag) == set {
             self.bus.tick(1);

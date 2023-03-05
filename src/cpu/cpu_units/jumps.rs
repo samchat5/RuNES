@@ -8,7 +8,7 @@ pub trait Jumps {
     fn rts(&mut self);
 }
 
-impl Jumps for CPU {
+impl Jumps for CPU<'_> {
     fn jmp(&mut self, mode: AddressingMode) {
         match mode {
             AddressingMode::Absolute => self.pc = self.read_16(self.pc),

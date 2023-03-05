@@ -15,19 +15,19 @@ const APU_IO_SIZE: usize = 0x0020;
 const APU_IO_START: u16 = 0x4000;
 const APU_IO_END: u16 = 0x401F;
 
-pub struct Bus {
+pub struct Bus<'a> {
     cpu_ram: [u8; RAM_SIZE],
     apu_io: [u8; APU_IO_SIZE],
     pub ppu: PPU,
     cpu_cycles: u64,
     mapper: Rc<RefCell<dyn Mapper>>,
-    callback: Box<dyn FnMut(&PPU)>,
+    callback: Box<dyn FnMut(&PPU) + 'a>,
 }
 
-impl Bus {
-    pub fn new<F>(file: File, callback: F) -> Self
+impl<'a> Bus<'a> {
+    pub fn new<F>(file: File, callback: F) -> Bus<'a>
     where
-        F: FnMut(&PPU),
+        F: FnMut(&PPU) + 'a,
     {
         let mapper = Rc::new(RefCell::new(NROM::new(
             file.prg_rom_area,

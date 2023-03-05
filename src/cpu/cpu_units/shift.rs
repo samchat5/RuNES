@@ -43,7 +43,7 @@ pub(crate) trait Shift: Logical + Arithmetic {
     }
 }
 
-impl Shift for CPU {
+impl Shift for CPU<'_> {
     fn shift(&mut self, mode: AddressingMode, op: ShiftOp) {
         let addr = self.get_operand_addr(mode);
         let val = match mode {

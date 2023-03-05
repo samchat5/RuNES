@@ -66,7 +66,7 @@ pub enum AddressingMode {
     Indirect,
 }
 
-pub struct CPU {
+pub struct CPU<'a> {
     // Registers
     pub x: u8,
     pub y: u8,
@@ -78,14 +78,14 @@ pub struct CPU {
     pub status: Status,
 
     // Memory
-    pub bus: Bus,
+    pub bus: Bus<'a>,
 
     // Logger
     pub sink: Box<dyn Write + Send>,
 }
 
-impl CPU {
-    pub fn new(bus: Bus) -> Self {
+impl<'a> CPU<'a> {
+    pub fn new(bus: Bus<'a>) -> CPU<'a> {
         CPU {
             x: 0,
             y: 0,

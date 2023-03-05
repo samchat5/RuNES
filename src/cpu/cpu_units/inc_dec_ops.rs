@@ -47,7 +47,7 @@ pub(crate) trait IncDecOps: Arithmetic {
     }
 }
 
-impl IncDecOps for CPU {
+impl IncDecOps for CPU<'_> {
     fn inc_dec(&mut self, mode: AddressingMode, op: IncDec) {
         let addr = self.get_operand_addr(mode).unwrap();
         let val = match op {

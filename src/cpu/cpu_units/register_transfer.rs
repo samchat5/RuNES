@@ -20,7 +20,7 @@ pub trait RegisterTransfer {
     }
 }
 
-impl RegisterTransfer for CPU {
+impl RegisterTransfer for CPU<'_> {
     fn transfer(&mut self, from: Register, to: Register) {
         match (from, to) {
             (Register::A, Register::X) => {

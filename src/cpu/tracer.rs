@@ -6,7 +6,7 @@ pub trait Loggable {
     fn log(&mut self);
 }
 
-impl Loggable for CPU {
+impl Loggable for CPU<'_> {
     fn log(&mut self) {
         let code = self.read(self.pc);
         let op = OPS[match OPS.binary_search_by_key(&code, |op| op.hex) {

@@ -10,7 +10,7 @@ pub trait SysFuncs {
     fn nmi(&mut self);
 }
 
-impl SysFuncs for CPU {
+impl SysFuncs for CPU<'_> {
     fn nop(&mut self, mode: AddressingMode) {
         let inc_cycles = match self.get_absolute_addr(mode, self.pc) {
             Some((_, true)) => 1,

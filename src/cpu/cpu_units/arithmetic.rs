@@ -39,7 +39,7 @@ pub trait Arithmetic {
     }
 }
 
-impl Arithmetic for CPU {
+impl Arithmetic for CPU<'_> {
     fn arith(&mut self, mode: AddressingMode, op: ArithOp, does_inc_cycle: bool) {
         let (val, inc_cycle) = self.get_absolute_addr(mode, self.pc).unwrap();
         let val = self.read(val);

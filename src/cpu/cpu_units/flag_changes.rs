@@ -32,7 +32,7 @@ pub trait FlagChanges {
     }
 }
 
-impl FlagChanges for CPU {
+impl FlagChanges for CPU<'_> {
     fn flag(&mut self, flag: Status, set: bool) {
         self.status.set(flag, set);
     }

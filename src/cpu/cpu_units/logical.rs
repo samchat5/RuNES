@@ -36,7 +36,7 @@ pub trait Logical {
     }
 }
 
-impl Logical for CPU {
+impl Logical for CPU<'_> {
     fn bit_op(&mut self, mode: AddressingMode, op: LogicalOp, does_inc_cycles: bool) {
         let (addr, inc_cycles) = self.get_absolute_addr(mode, self.pc).unwrap();
         let val = self.read(addr);

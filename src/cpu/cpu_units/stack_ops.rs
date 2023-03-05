@@ -26,7 +26,7 @@ pub trait StackOps {
     }
 }
 
-impl StackOps for CPU {
+impl StackOps for CPU<'_> {
     fn ph(&mut self, reg: Register) {
         self.stack_push(match reg {
             Register::A => self.acc,

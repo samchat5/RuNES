@@ -38,7 +38,7 @@ pub trait LoadStore {
     }
 }
 
-impl LoadStore for CPU {
+impl LoadStore for CPU<'_> {
     fn ld(&mut self, mode: AddressingMode, regs: Vec<Register>) {
         let (val, inc_cycles) = self.get_absolute_addr(mode, self.pc).unwrap();
         if inc_cycles {
