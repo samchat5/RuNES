@@ -2,7 +2,8 @@ use sdl2::{event::Event, keyboard::Keycode, pixels::PixelFormatEnum};
 use std::collections::HashMap;
 
 use nes::joypad::{Buttons, Joypad};
-use nes::{bus::Bus, cpu::CPU, ines_parser::File, ppu::PPU};
+use nes::ppu::PPU;
+use nes::{bus::Bus, cpu::CPU, ines_parser::File};
 
 fn main() {
     let scale_x = 3f32;
@@ -37,10 +38,11 @@ fn main() {
         .unwrap();
 
     // Load the game
+    // let rom = File::new("tests/instr_test-v5/official_only.nes");
     let rom = File::new("roms/pacman.nes");
 
-    let timer = sdl_context.timer().unwrap();
-    let bus = Bus::new(rom, move |ppu, joypad| {
+    let mut timer = sdl_context.timer().unwrap();
+    let bus = Bus::new(rom, move |ppu: &mut PPU, joypad: &mut Joypad| {
         let start_ticks = timer.ticks();
         let frame = ppu.render();
         texture.update(None, &(frame).image, 256 * 3).unwrap();
@@ -69,11 +71,21 @@ fn main() {
             }
         }
         let end_ticks = timer.ticks();
-        println!("Frame time: {} ms", end_ticks - start_ticks)
+        if end_ticks - start_ticks < 16 {
+            timer.delay(16 - (end_ticks - start_ticks));
+        }
     });
 
     let mut cpu = CPU::new(bus);
 
+    cpu.set_sink(Box::new(
+        std::fs::File::options()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open("log.log")
+            .unwrap(),
+    ));
     cpu.reset();
     cpu.run(u64::MAX);
 }

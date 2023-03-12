@@ -1,9 +1,12 @@
 use core::panic;
+use std::cell::RefCell;
 use std::io::{self, Write};
+use std::rc::Rc;
 
 use bitflags::bitflags;
 
 use crate::bus::Bus;
+use crate::cpu::tracer::Loggable;
 
 use self::{
     cpu_units::{
@@ -78,7 +81,7 @@ pub struct CPU<'a> {
     pub status: Status,
 
     // Memory
-    pub bus: Bus<'a>,
+    pub bus: Rc<RefCell<Bus<'a>>>,
 
     // Logger
     pub sink: Box<dyn Write + Send>,
@@ -93,7 +96,7 @@ impl CPU<'_> {
             sp: 0xFD,
             pc: 0,
             status: Status { bits: 0x24 },
-            bus,
+            bus: Rc::new(RefCell::from(bus)),
             sink: Box::new(io::sink()),
         }
     }
@@ -103,15 +106,23 @@ impl CPU<'_> {
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
-        self.bus.read(addr)
+        self.bus.borrow_mut().read(addr)
+    }
+
+    pub fn read_trace(&self, addr: u16) -> u8 {
+        self.bus.borrow().read_trace(addr)
+    }
+
+    pub fn read_16_trace(&self, addr: u16) -> u16 {
+        self.bus.borrow().read_16_trace(addr)
     }
 
     pub fn write(&mut self, addr: u16, val: u8) {
-        self.bus.write(addr, val);
+        self.bus.borrow_mut().write(addr, val);
     }
 
     pub fn read_16(&mut self, addr: u16) -> u16 {
-        self.bus.read_16(addr)
+        self.bus.borrow_mut().read_16(addr)
     }
 
     fn stack_push(&mut self, data: u8) {
@@ -133,6 +144,46 @@ impl CPU<'_> {
         let lo = self.stack_pop() as u16;
         let hi = self.stack_pop() as u16;
         (hi << 8) | lo
+    }
+
+    pub fn get_absolute_addr_trace(&self, mode: AddressingMode, addr: u16) -> Option<(u16, bool)> {
+        match mode {
+            AddressingMode::Immediate => Some((addr, false)),
+            AddressingMode::ZeroPage => Some((self.read_trace(addr) as u16, false)),
+            AddressingMode::ZeroPageX => {
+                Some((self.read_trace(addr).wrapping_add(self.x) as u16, false))
+            }
+            AddressingMode::ZeroPageY => {
+                Some((self.read_trace(addr).wrapping_add(self.y) as u16, false))
+            }
+            AddressingMode::Absolute => Some((self.read_16_trace(addr) as u16, false)),
+            AddressingMode::AbsoluteX => {
+                let ptr = self.read_16_trace(addr);
+                let inc = ptr.wrapping_add(self.x as u16);
+                Some((inc, ptr & 0xff00 != inc & 0xff00))
+            }
+            AddressingMode::AbsoluteY => {
+                let ptr = self.read_16_trace(addr);
+                let inc = ptr.wrapping_add(self.y as u16);
+                Some((inc, ptr & 0xff00 != inc & 0xff00))
+            }
+            AddressingMode::IndexedIndirect => {
+                let ptr: u8 = self.read_trace(addr).wrapping_add(self.x);
+                Some((
+                    (self.read_trace(ptr.wrapping_add(1) as u16) as u16) << 8
+                        | (self.read_trace(ptr as u16) as u16),
+                    false,
+                ))
+            }
+            AddressingMode::IndirectIndexed => {
+                let ptr = self.read_trace(addr);
+                let deref = (self.read_trace((ptr as u8).wrapping_add(1) as u16) as u16) << 8
+                    | (self.read_trace(ptr as u16) as u16);
+                let inc = deref.wrapping_add(self.y as u16);
+                Some((inc, deref & 0xff00 != inc & 0xff00))
+            }
+            _ => None,
+        }
     }
 
     pub fn get_absolute_addr(&mut self, mode: AddressingMode, addr: u16) -> Option<(u16, bool)> {
@@ -182,18 +233,27 @@ impl CPU<'_> {
 
     pub fn reset_with_val(&mut self, val: u16) {
         self.pc = val;
-        self.bus.tick(7);
+        self.bus.borrow_mut().tick(7);
     }
 
     pub fn run(&mut self, cycles: u64) {
         // self.log();
-        while self.bus.get_cycles() < cycles {
-            if self.bus.poll_nmi() {
+        while self.bus.borrow_mut().get_cycles() < cycles {
+            if self.bus.borrow_mut().poll_nmi() {
                 self.nmi();
             }
 
             let opcode = self.read(self.pc);
-            let op = &OPS[OPS.binary_search_by_key(&opcode, |op| op.hex).unwrap()];
+            let searched_op = OPS.binary_search_by_key(&opcode, |op| op.hex);
+
+            let op = if searched_op.is_err() {
+                println!("Invalid opcode: {:02X}", opcode);
+                &OPS[OPS
+                    .binary_search_by_key(&&*"NOP".to_string(), |op| op.name)
+                    .unwrap()]
+            } else {
+                &OPS[OPS.binary_search_by_key(&opcode, |op| op.hex).unwrap()]
+            };
 
             self.pc += 1;
 
@@ -272,7 +332,7 @@ impl CPU<'_> {
                 self.pc += op.size - 1;
             }
 
-            self.bus.tick(op.cycles as u64);
+            self.bus.borrow_mut().tick(op.cycles as u64);
 
             // self.log();
         }

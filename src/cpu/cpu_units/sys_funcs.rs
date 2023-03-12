@@ -16,7 +16,7 @@ impl SysFuncs for CPU<'_> {
             Some((_, true)) => 1,
             _ => 0,
         };
-        self.bus.tick(inc_cycles);
+        self.bus.borrow_mut().tick(inc_cycles);
     }
 
     fn brk(&mut self) {
@@ -46,7 +46,7 @@ impl SysFuncs for CPU<'_> {
         status.set(Status::BREAK2, true);
         self.stack_push(status.bits);
         self.status.insert(Status::INTERRUPT_DISABLE);
-        self.bus.tick(2);
+        self.bus.borrow_mut().tick(2);
         self.pc = self.read_16(0xfffa);
     }
 }

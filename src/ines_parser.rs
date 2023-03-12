@@ -235,9 +235,9 @@ pub fn get_prg_rom_size(header: Header) -> usize {
         (2_u32.pow((header.prg_rom_size_lsb & 0xFC) as u32)
             * ((header.prg_rom_size_lsb & 0x03) * 2 + 1) as u32) as usize
     } else {
-        ((header.prg_rom_size_lsb as u16
-            | ((header.rom_size_msb.get(ROMSizeMSBEnum::PRG) as u16) << 8))
-            * 16384) as usize
+        let lsb = header.prg_rom_size_lsb as u16;
+        let msb = header.rom_size_msb.get(ROMSizeMSBEnum::PRG) as u16;
+        (msb << 8 | lsb) as usize * 16384
     }
 }
 

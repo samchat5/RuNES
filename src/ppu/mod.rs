@@ -1,10 +1,10 @@
-use std::collections::HashSet;
 use std::{cell::RefCell, rc::Rc};
 
 use itertools::Itertools;
 use sdl2::pixels::Color;
 
 use crate::ppu::palettes::Palette;
+use crate::ppu::registers::scroll::Scroll;
 use crate::{
     frame::Frame,
     mappers::{Mapper, Mirroring},
@@ -15,11 +15,19 @@ use self::registers::{address::Address, control::Control, mask::Mask, status::St
 pub mod palettes;
 mod registers;
 
+struct BoundingBox {
+    x_0: usize,
+    y_0: usize,
+    x_1: usize,
+    y_1: usize,
+}
+
 pub struct PPU {
     addr: Address,
     ctrl: Control,
     status: Status,
     mask: Mask,
+    scroll: Scroll,
 
     oam_addr: u8,
     oam: [u8; 0x100],
@@ -48,6 +56,7 @@ impl PPU {
             ctrl: Control::new(),
             status: Status::new(),
             mask: Mask::new(),
+            scroll: Scroll::default(),
             oam_addr: 0,
             oam: [0; 0x100],
             name_table0: [0; 0x0400],
@@ -70,51 +79,61 @@ impl PPU {
         }
     }
 
-    pub fn render(&self) -> Frame {
-        let mut frame = Frame::new();
+    fn render_nametable(
+        &self,
+        frame: &mut Frame,
+        name_table: &[u8],
+        rect: BoundingBox,
+        shift_x: isize,
+        shift_y: isize,
+    ) {
         let pattern_table =
             self.get_pattern_table_from_bool(self.ctrl.contains(Control::BACKGROUND_PATTERN_ADDR));
-        let name_table = self.get_name_table_from_idx(
-            self.ctrl.contains(Control::NAMETABLE_2),
-            self.ctrl.contains(Control::NAMETABLE_1),
-        );
         let tile_size = 8;
         let tiles_per_row = 32;
 
-        // Each bank has 256 tiles
-        (0usize..960).for_each(|n| {
-            let t = name_table[n] as usize;
-
+        (0usize..0x3c0).for_each(|n| {
             let tile_col = n % tiles_per_row;
             let tile_row = n / tiles_per_row;
             let x = tile_col * tile_size;
             let y = tile_row * tile_size;
-            let pal = self.get_attribute_table_idx(tile_row, tile_col);
+            let pal = self.get_attribute_table_idx(tile_row, tile_col, name_table);
 
+            let t = name_table[n] as usize;
             let range = (t % 256) * 16..((t % 256) * 16 + 16);
             let tile = &pattern_table[range];
 
             (0..8).cartesian_product(0..8).for_each(|(py, px)| {
-                let lower = tile[py];
-                let upper = tile[py + 8];
+                let (pixel_x, pixel_y) = (x + px, y + py);
+                if pixel_x >= rect.x_0
+                    && pixel_x < rect.x_1
+                    && pixel_y >= rect.y_0
+                    && pixel_y < rect.y_1
+                {
+                    let lower = tile[py];
+                    let upper = tile[py + 8];
 
-                let mask = 7 - px;
-                let bit1 = 1 & (upper >> mask);
-                let bit0 = 1 & (lower >> mask);
-                let val = (bit1 << 1) | bit0;
-
-                if val == 0 {
-                    frame.is_zero[y + py][x + px] = true;
+                    let mask = 7 - px;
+                    let bit1 = 1 & (upper >> mask);
+                    let bit0 = 1 & (lower >> mask);
+                    let val = (bit1 << 1) | bit0;
+                    if val == 0 {
+                        frame.is_zero[y + py][x + px] = true;
+                    }
+                    let color = pal[val as usize];
+                    frame.set_pixel(
+                        (shift_x + pixel_x as isize) as usize,
+                        (shift_y + pixel_y as isize) as usize,
+                        color,
+                    );
                 }
-
-                let color = pal[val as usize];
-                frame.set_pixel(x + px, y + py, color);
             });
         });
+    }
 
-        let pattern_table =
-            self.get_pattern_table_from_bool(self.ctrl.contains(Control::SPRITE_PATTERN_ADDR));
-
+    fn render_sprites(&mut self, pattern_table: bool, frame: &mut Frame) {
+        let pattern_table = self.get_pattern_table_from_bool(pattern_table);
+        let mut zero_hit = false;
         self.oam.chunks_exact(4).rev().for_each(|c| {
             let tile_y = c[0];
             let tile_idx = c[1];
@@ -141,18 +160,82 @@ impl PPU {
                 let x = tile_x as usize + if flip_horiz { 7 - px } else { px };
                 let y = tile_y as usize + if flip_vert { 7 - py } else { py };
 
-                // A = !background_zero.contains(&(x, y)) => true if background is not zero
-                // B = val != 0x00 => true if sprite is not zero
-                // C = priority => true if sprite has priority
-                // (!A && B) || (B && !C)
-                // B && (!A || !C)
-                if val != 0x00 && (frame.is_zero[y][x] || !priority) {
+                if x < 256 && y < 240 && val != 0x00 && (frame.is_zero[y][x] || !priority) {
                     let color = pal[val as usize];
                     frame.set_pixel(x, y, color);
                 }
+
+                if x < 256 && y < 240 && val != 0x00 && !frame.is_zero[y][x] {
+                    zero_hit = true;
+                }
             });
         });
+        if zero_hit {
+            self.status.set(Status::SPRITE_ZERO_HIT, true);
+        }
+    }
 
+    pub fn render(&mut self) -> Frame {
+        let mut frame = Frame::new();
+        let scroll_x = self.scroll.get_x() as usize;
+        let scroll_y = self.scroll.get_y() as usize;
+
+        let name_table_idx = (self.ctrl & (Control::NAMETABLE_2 | Control::NAMETABLE_1)).bits();
+        let main_name_table = match name_table_idx {
+            0 => &self.name_table0,
+            1 => &self.name_table1,
+            2 => &self.name_table2,
+            3 => &self.name_table3,
+            _ => unreachable!(),
+        };
+        let second_name_table = match (name_table_idx, self.mapper.borrow().get_mirroring()) {
+            (2, Mirroring::Horizontal) | (1, Mirroring::Vertical) => &self.name_table0,
+            (3, Mirroring::Horizontal) | (0, Mirroring::Vertical) => &self.name_table1,
+            (0, Mirroring::Horizontal) | (3, Mirroring::Vertical) => &self.name_table2,
+            (1, Mirroring::Horizontal) | (2, Mirroring::Vertical) => &self.name_table3,
+            _ => unreachable!(),
+        };
+
+        self.render_nametable(
+            &mut frame,
+            main_name_table,
+            BoundingBox {
+                x_0: scroll_x,
+                y_0: scroll_y,
+                x_1: 256,
+                y_1: 240,
+            },
+            -(scroll_x as isize),
+            -(scroll_y as isize),
+        );
+        if scroll_x > 0 {
+            self.render_nametable(
+                &mut frame,
+                second_name_table,
+                BoundingBox {
+                    x_0: 0,
+                    y_0: 0,
+                    x_1: scroll_x,
+                    y_1: 240,
+                },
+                (256 - scroll_x) as isize,
+                0,
+            );
+        } else if scroll_y > 0 {
+            self.render_nametable(
+                &mut frame,
+                second_name_table,
+                BoundingBox {
+                    x_0: 0,
+                    y_0: 0,
+                    x_1: 256,
+                    y_1: scroll_y,
+                },
+                0,
+                (240 - scroll_y) as isize,
+            );
+        }
+        self.render_sprites(self.ctrl.contains(Control::SPRITE_PATTERN_ADDR), &mut frame);
         frame
     }
 
@@ -184,11 +267,6 @@ impl PPU {
             }
         }
         false
-    }
-
-    pub fn set_chr_rom(&mut self, chr_rom: [u8; 0x2000]) {
-        self.pattern_table0 = chr_rom[0x0000..0x1000].try_into().unwrap();
-        self.pattern_table1 = chr_rom[0x1000..0x2000].try_into().unwrap();
     }
 
     pub fn write_ppumask(&mut self, val: u8) {
@@ -229,10 +307,25 @@ impl PPU {
                 self.buffer = self.get_from_nametable(addr);
                 res
             }
-            0x3f10 | 0x3f14 | 0x3f18 | 0x3f0c => self.palette[addr - 0x3f10],
+            0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => self.palette[addr - 0x3f10],
             0x3f00..=0x3fff => self.palette[(addr - 0x3f00) % 0x20],
             _ => panic!("Invalid address {:#X}", addr),
         }
+    }
+
+    pub fn read_ppudata_trace(&self, addr: usize) -> u8 {
+        match addr {
+            0x0000..=0x0fff => self.pattern_table0[addr],
+            0x1000..=0x1fff => self.pattern_table1[addr - 0x1000],
+            0x2000..=0x3eff => self.get_from_nametable(addr),
+            0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => self.palette[addr - 0x3f10],
+            0x3f00..=0x3fff => self.palette[(addr - 0x3f00) % 0x20],
+            _ => panic!("Invalid address {:#X}", addr),
+        }
+    }
+
+    pub fn write_ppuscroll(&mut self, data: u8) {
+        self.scroll.write(data);
     }
 
     pub fn read_ppustatus(&self) -> u8 {
@@ -268,11 +361,6 @@ impl PPU {
     pub fn write_oamdma(&mut self, data: [u8; 256]) {
         self.oam = data;
         self.oam_addr = self.oam_addr.wrapping_add(1);
-    }
-
-    fn is_rendering(&self) -> bool {
-        self.mask
-            .contains(Mask::SHOW_SPRITES & Mask::SHOW_BACKGROUND)
     }
 
     fn write_to_nametable(&mut self, addr: usize, data: u8) {
@@ -357,18 +445,9 @@ impl PPU {
         }
     }
 
-    fn get_name_table_from_idx(&self, b1: bool, b0: bool) -> &[u8; 1024] {
-        match (b1, b0) {
-            (false, false) => &self.name_table0,
-            (false, true) => &self.name_table1,
-            (true, false) => &self.name_table2,
-            (true, true) => &self.name_table3,
-        }
-    }
-
-    fn get_attribute_table_idx(&self, row: usize, col: usize) -> Vec<Color> {
+    fn get_attribute_table_idx(&self, row: usize, col: usize, name_table: &[u8]) -> Vec<Color> {
         let attr_table_idx = row / 4 * 8 + col / 4;
-        let byte = self.name_table0[0x3c0 + attr_table_idx];
+        let byte = name_table[0x3c0 + attr_table_idx];
         let palette_idx = match (col % 4 / 2, row % 4 / 2) {
             (0, 0) => byte & 0x3,
             (1, 0) => (byte >> 2) & 0x3,

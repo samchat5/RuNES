@@ -1,3 +1,7 @@
+use crate::bus::Bus;
+use crate::mappers::Mapper;
+use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::io::Write;
 
 use super::{op::OPS, AddressingMode, CPU};
@@ -8,7 +12,7 @@ pub trait Loggable {
 
 impl Loggable for CPU<'_> {
     fn log(&mut self) {
-        let code = self.read(self.pc);
+        let code = self.read_trace(self.pc);
         let op = OPS[match OPS.binary_search_by_key(&code, |op| op.hex) {
             Ok(i) => i,
             Err(_) => panic!("Invalid opcode: {:02x}", code),
@@ -26,10 +30,10 @@ impl Loggable for CPU<'_> {
             | AddressingMode::Indirect => (0, 0),
             _ => {
                 let addr = self
-                    .get_absolute_addr(op.addressing_mode, begin + 1)
+                    .get_absolute_addr_trace(op.addressing_mode, begin + 1)
                     .unwrap()
                     .0;
-                (addr, self.read(addr))
+                (addr, self.read_trace(addr))
             }
         };
 
@@ -39,13 +43,13 @@ impl Loggable for CPU<'_> {
                 _ => String::from(""),
             },
             2 => {
-                let address: u8 = self.read(begin + 1);
+                let address: u8 = self.read_trace(begin + 1);
                 hex_dump.push(address);
 
                 match op.addressing_mode {
                     AddressingMode::Immediate => format!("#${:02x}", address),
                     AddressingMode::ZeroPage => {
-                        format!("${:02x} = {:02x}", mem_addr, self.read(mem_addr))
+                        format!("${:02x} = {:02x}", mem_addr, self.read_trace(mem_addr))
                     }
                     AddressingMode::ZeroPageX => format!(
                         "${:02x},X @ {:02x} = {:02x}",
@@ -85,8 +89,8 @@ impl Loggable for CPU<'_> {
                 }
             }
             3 => {
-                let address_lo = self.read(begin + 1);
-                let address_hi = self.read(begin + 2);
+                let address_lo = self.read_trace(begin + 1);
+                let address_hi = self.read_trace(begin + 2);
                 let address = (address_hi as u16) << 8 | (address_lo as u16);
 
                 hex_dump.push(address_lo);
@@ -100,11 +104,11 @@ impl Loggable for CPU<'_> {
                         if op.hex == 0x6c {
                             //jmp indirect
                             let jmp_addr = if address & 0x00FF == 0x00FF {
-                                let lo = self.read(address);
-                                let hi = self.read(address & 0xFF00);
+                                let lo = self.read_trace(address);
+                                let hi = self.read_trace(address & 0xFF00);
                                 (hi as u16) << 8 | (lo as u16)
                             } else {
-                                self.read_16(address)
+                                self.read_16_trace(address)
                             };
                             format!("(${:04x}) = {:04x}", address, jmp_addr)
                         } else {
@@ -148,7 +152,9 @@ impl Loggable for CPU<'_> {
             .trim()
             .to_string();
 
-        let ppu_cycles = self.bus.get_cycles() * 3;
+        let binding: &RefCell<Bus> = self.bus.borrow();
+        let cycles = binding.borrow().get_cycles();
+        let ppu_cycles = cycles * 3;
         let ppu_scanline = ppu_cycles / 341;
         let ppu_cycle = ppu_cycles % 341;
 
@@ -162,7 +168,7 @@ impl Loggable for CPU<'_> {
             self.sp,
             ppu_scanline,
             ppu_cycle,
-            self.bus.get_cycles()
+            cycles
         )
         .to_uppercase();
 

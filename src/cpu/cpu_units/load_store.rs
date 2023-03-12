@@ -42,7 +42,7 @@ impl LoadStore for CPU<'_> {
     fn ld(&mut self, mode: AddressingMode, regs: Vec<Register>) {
         let (val, inc_cycles) = self.get_absolute_addr(mode, self.pc).unwrap();
         if inc_cycles {
-            self.bus.tick(1);
+            self.bus.borrow_mut().tick(1);
         }
         let val = self.read(val);
         regs.iter().for_each(|reg| match reg {

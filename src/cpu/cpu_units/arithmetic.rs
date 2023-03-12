@@ -63,7 +63,7 @@ impl Arithmetic for CPU<'_> {
         self.acc = result;
 
         if inc_cycle && does_inc_cycle {
-            self.bus.tick(1);
+            self.bus.borrow_mut().tick(1);
         }
     }
 

@@ -41,7 +41,7 @@ impl Logical for CPU<'_> {
         let (addr, inc_cycles) = self.get_absolute_addr(mode, self.pc).unwrap();
         let val = self.read(addr);
         if inc_cycles && does_inc_cycles {
-            self.bus.tick(1);
+            self.bus.borrow_mut().tick(1);
         }
         self.acc = match op {
             LogicalOp::AND => self.acc & val,
