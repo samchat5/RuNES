@@ -18,7 +18,7 @@ impl NameTableMirrorType {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Flags1(u8);
+pub struct Flags1(u8);
 
 pub enum Flags1Enum {
     NAME_TABLE_MIRROR,
@@ -29,7 +29,7 @@ pub enum Flags1Enum {
 }
 
 impl Flags1 {
-    fn get(&self, arg: Flags1Enum) -> u8 {
+    pub fn get(&self, arg: Flags1Enum) -> u8 {
         match arg {
             Flags1Enum::NAME_TABLE_MIRROR => self.0 & 0x01,
             Flags1Enum::BATTERY => (self.0 & 0x02) >> 1,
@@ -192,7 +192,7 @@ pub struct Header {
     _magic: [u8; 4],
     prg_rom_size_lsb: u8,
     chr_rom_size_lsb: u8,
-    flags1: Flags1,
+    pub flags1: Flags1,
     _flags2: Flags2,
     _mapper_msb: MapperMSB,
     rom_size_msb: ROMSizeMSB,

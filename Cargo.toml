@@ -16,5 +16,5 @@ rand = "0.8.5"
 sdl2 = "0.35.2"
 itertools = "0.10.5"
 
-[profile.release]
+[profile.dev]
 debug = true

@@ -6,6 +6,29 @@ use nes::ppu::PPU;
 use nes::{bus::Bus, cpu::CPU, ines_parser::File};
 
 fn main() {
+    // Load the game
+    // let rom = File::new("tests/instr_test-v5/official_only.nes"); // Mapper 1
+
+    // let rom = File::new("tests/branch_timing_tests/1.Branch_Basics.nes"); // Passes
+    // let rom = File::new("tests/branch_timing_tests/2.Backward_Branch.nes"); // Passes
+    // let rom = File::new("tests/branch_timing_tests/3.Forward_Branch.nes"); // Passes
+
+    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/palette_ram.nes"); // Passes
+    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/power_up_palette.nes"); // --fix
+    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/sprite_ram.nes"); // -- fix
+    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/vbl_clear_time.nes"); // -- fix
+    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/vram_access.nes"); // -- fix
+
+    // let rom = File::new("tests/nestest/nestest.nes");
+
+    // let rom = File::new("roms/mario.nes");
+    // let rom = File::new("roms/pacman.nes");
+    let rom = File::new("roms/excitebike.nes");
+
+    create(rom);
+}
+
+fn create(rom: File) {
     let scale_x = 3f32;
     let scale_y = 3f32;
 
@@ -37,14 +60,10 @@ fn main() {
         .create_texture_target(PixelFormatEnum::RGB24, 256, 240)
         .unwrap();
 
-    // Load the game
-    // let rom = File::new("tests/instr_test-v5/official_only.nes");
-    let rom = File::new("roms/pacman.nes");
-
     let mut timer = sdl_context.timer().unwrap();
     let bus = Bus::new(rom, move |ppu: &mut PPU, joypad: &mut Joypad| {
         let start_ticks = timer.ticks();
-        let frame = ppu.render();
+        let frame = ppu.curr_frame;
         texture.update(None, &(frame).image, 256 * 3).unwrap();
         canvas.copy(&texture, None, None).unwrap();
         canvas.present();
@@ -63,7 +82,6 @@ fn main() {
                 }
                 Event::KeyUp { keycode, .. } => {
                     if let Some(button) = key_map.get(&keycode.unwrap()) {
-                        println!("{:?} ", button);
                         joypad.buttons.set(*button, false)
                     }
                 }
@@ -77,7 +95,6 @@ fn main() {
     });
 
     let mut cpu = CPU::new(bus);
-
     cpu.set_sink(Box::new(
         std::fs::File::options()
             .create(true)

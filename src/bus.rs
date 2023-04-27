@@ -1,9 +1,9 @@
 use itertools::Itertools;
 use std::{cell::RefCell, rc::Rc};
 
+use crate::ines_parser::Flags1Enum;
 use crate::joypad::Joypad;
 use crate::{
-    cpu,
     ines_parser::File,
     mappers::{nrom::NROM, Mapper},
     ppu::PPU,
@@ -38,6 +38,7 @@ impl<'a> Bus<'a> {
         let mapper = Rc::new(RefCell::new(NROM::new(
             file.prg_rom_area,
             file.chr_rom_area,
+            file.header.flags1.get(Flags1Enum::NAME_TABLE_MIRROR),
         )));
         Bus {
             cpu_ram: [0; RAM_SIZE],
@@ -69,8 +70,20 @@ impl<'a> Bus<'a> {
     }
 
     pub fn tick(&mut self, cycles: u64) {
+        let prev_ppu_cycles = self.cpu_cycles * 3;
+        let prev_ppu_scanline = (prev_ppu_cycles / 341) % 262;
+        let prev_ppu_cycle = prev_ppu_cycles % 341;
+
         self.cpu_cycles += cycles;
-        let new_frame = self.ppu.tick(cycles * 3);
+        let ppu_cycles = self.cpu_cycles * 3;
+        let mut ppu_scanline = ((ppu_cycles / 341) % 262) as i16;
+        let ppu_cycle = ppu_cycles % 341;
+
+        if ppu_scanline == 261 {
+            ppu_scanline = -1;
+        }
+
+        let new_frame = self.ppu.run_to(ppu_scanline, ppu_cycle);
         if new_frame {
             (self.callback)(&mut self.ppu, &mut self.joypad);
         }

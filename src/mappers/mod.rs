@@ -1,3 +1,4 @@
+pub mod mmc1;
 pub mod nrom;
 
 pub enum Mirroring {
@@ -9,11 +10,13 @@ pub enum Mirroring {
 pub trait Mapper {
     fn get_mirroring(&self) -> Mirroring;
 
-    fn get_chr_rom(&self) -> &[u8];
+    fn read_chr_rom(&self, addr: u16) -> u8;
 
     fn read(&self, addr: u16) -> u8;
 
     fn write(&mut self, addr: u16, data: u8);
+
+    fn write_chr_rom(&mut self, addr: u16, data: u8);
 
     fn read_16(&self, addr: u16) -> u16 {
         let low = self.read(addr);

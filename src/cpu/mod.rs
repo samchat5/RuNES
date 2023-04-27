@@ -233,12 +233,12 @@ impl CPU<'_> {
 
     pub fn reset_with_val(&mut self, val: u16) {
         self.pc = val;
-        self.bus.borrow_mut().tick(7);
+        self.bus.borrow_mut().tick(8);
     }
 
     pub fn run(&mut self, cycles: u64) {
         // self.log();
-        while self.bus.borrow_mut().get_cycles() < cycles {
+        while self.bus.borrow().get_cycles() < cycles {
             if self.bus.borrow_mut().poll_nmi() {
                 self.nmi();
             }

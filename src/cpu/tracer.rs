@@ -1,5 +1,4 @@
 use crate::bus::Bus;
-use crate::mappers::Mapper;
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::io::Write;
@@ -155,7 +154,7 @@ impl Loggable for CPU<'_> {
         let binding: &RefCell<Bus> = self.bus.borrow();
         let cycles = binding.borrow().get_cycles();
         let ppu_cycles = cycles * 3;
-        let ppu_scanline = ppu_cycles / 341;
+        let ppu_scanline = (ppu_cycles / 341) % 262;
         let ppu_cycle = ppu_cycles % 341;
 
         let msg = format!(
