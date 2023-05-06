@@ -1,61 +1,33 @@
 use crate::cpu::{Register, Status, CPU};
 
 pub trait StackOps {
-    fn ph(&mut self, reg: Register);
+    fn pha(&mut self);
 
-    fn pl(&mut self, reg: Register);
+    fn pla(&mut self);
 
-    fn tsx(&mut self);
+    fn php(&mut self);
 
-    fn txs(&mut self);
-
-    fn pha(&mut self) {
-        self.ph(Register::A);
-    }
-
-    fn pla(&mut self) {
-        self.pl(Register::A);
-    }
-
-    fn php(&mut self) {
-        self.ph(Register::P);
-    }
-
-    fn plp(&mut self) {
-        self.pl(Register::P);
-    }
+    fn plp(&mut self);
 }
 
 impl StackOps for CPU<'_> {
-    fn ph(&mut self, reg: Register) {
-        self.stack_push(match reg {
-            Register::A => self.acc,
-            Register::P => (self.status | Status::BREAK | Status::BREAK2).bits,
-            _ => panic!("Invalid register for push"),
-        });
+    fn pha(&mut self) {
+        self.push(self.acc);
     }
 
-    fn pl(&mut self, reg: Register) {
-        match reg {
-            Register::A => {
-                self.acc = self.stack_pop();
-                self.status.set(Status::ZERO, self.acc == 0);
-                self.status.set(Status::NEGATIVE, self.acc & 0x80 != 0);
-            }
-            Register::P => {
-                self.status.bits = self.stack_pop() & !Status::BREAK.bits | Status::BREAK2.bits
-            }
-            _ => panic!("Invalid register for pull"),
-        }
+    fn pla(&mut self) {
+        self.dummy_read();
+        let popped = self.pop();
+        self.set_register(Register::A, popped);
     }
 
-    fn tsx(&mut self) {
-        self.x = self.sp;
-        self.status.set(Status::ZERO, self.x == 0);
-        self.status.set(Status::NEGATIVE, self.x & 0x80 != 0);
+    fn php(&mut self) {
+        let flags = self.status.bits | Status::BREAK.bits | Status::BREAK2.bits;
+        self.push(flags);
     }
 
-    fn txs(&mut self) {
-        self.sp = self.x;
+    fn plp(&mut self) {
+        self.dummy_read();
+        self.status = Status::from_bits_truncate(self.pop());
     }
 }

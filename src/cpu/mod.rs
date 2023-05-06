@@ -6,7 +6,6 @@ use std::rc::Rc;
 use bitflags::bitflags;
 
 use crate::bus::Bus;
-use crate::cpu::tracer::Loggable;
 
 use self::{
     cpu_units::{
@@ -16,7 +15,7 @@ use self::{
         sys_funcs::SysFuncs,
     },
     op::OPS,
-    // tracer::Loggable,
+    tracer::Loggable,
 };
 
 mod cpu_units;
@@ -43,8 +42,6 @@ bitflags! {
     }
 }
 
-const STACK_BASE: u16 = 0x0100;
-
 pub enum Register {
     X,
     Y,
@@ -60,9 +57,12 @@ pub enum AddressingMode {
     ZeroPageY,
     Absolute,
     AbsoluteX,
+    AbsoluteXW,
     AbsoluteY,
+    AbsoluteYW,
     IndexedIndirect,
     IndirectIndexed,
+    IndirectIndexedW,
     Implicit,
     Accumulator,
     Relative,
@@ -80,11 +80,28 @@ pub struct CPU<'a> {
     // Status flags
     pub status: Status,
 
-    // Memory
     pub bus: Rc<RefCell<Bus<'a>>>,
 
     // Logger
     pub sink: Box<dyn Write + Send>,
+    logging_enabled: bool,
+
+    // Flags
+    irq_flag: bool,
+    need_halt: bool,
+    run_irq: bool,
+    start_clock_count: u8,
+    end_clock_count: u8,
+    master_clock: u64,
+    cycle_count: u64,
+    ppu_offset: u8,
+    need_nmi: bool,
+    prev_need_nmi: bool,
+    prev_run_irq: bool,
+    instr_addr_mode: AddressingMode,
+    cpu_write: bool,
+    operand: u16,
+    prev_nmi_flag: bool,
 }
 
 impl CPU<'_> {
@@ -95,58 +112,118 @@ impl CPU<'_> {
             acc: 0,
             sp: 0xFD,
             pc: 0,
-            status: Status { bits: 0x24 },
             bus: Rc::new(RefCell::from(bus)),
+            status: Status { bits: 0x04 },
             sink: Box::new(io::sink()),
+            logging_enabled: false,
+            irq_flag: false,
+            need_halt: false,
+            run_irq: false,
+            start_clock_count: 6,
+            end_clock_count: 6,
+            master_clock: 0,
+            cycle_count: 0,
+            ppu_offset: 0,
+            need_nmi: false,
+            prev_need_nmi: false,
+            prev_run_irq: false,
+            instr_addr_mode: AddressingMode::Implicit,
+            cpu_write: false,
+            operand: 0,
+            prev_nmi_flag: false,
         }
+    }
+
+    fn read_trace(&mut self, addr: u16) -> u8 {
+        self.bus.borrow_mut().read_trace(addr)
+    }
+
+    fn read_16_trace(&mut self, addr: u16) -> u16 {
+        self.bus.borrow_mut().read_16_trace(addr)
+    }
+
+    fn read(&mut self, addr: u16) -> u8 {
+        self.bus.borrow_mut().read(addr)
+    }
+
+    fn write(&mut self, addr: u16, val: u8) {
+        self.bus.borrow_mut().write(addr, val);
+    }
+
+    fn run_to(&mut self, cyc: u64) {
+        self.bus.borrow_mut().run_to(cyc);
+    }
+
+    pub fn enable_logging(&mut self) {
+        self.logging_enabled = true;
     }
 
     pub fn set_sink(&mut self, stream: Box<dyn Write + Send>) {
         self.sink = stream;
     }
 
-    pub fn read(&mut self, addr: u16) -> u8 {
-        self.bus.borrow_mut().read(addr)
+    pub fn memory_read(&mut self, addr: u16) -> u8 {
+        self.start_cpu_cycle(true);
+        let val = self.read(addr);
+        self.end_cpu_cycle(true);
+        val
     }
 
-    pub fn read_trace(&self, addr: u16) -> u8 {
-        self.bus.borrow().read_trace(addr)
+    pub fn memory_read_word(&mut self, addr: u16) -> u16 {
+        let lo = self.memory_read(addr);
+        let hi = self.memory_read(addr + 1);
+        (hi as u16) << 8 | lo as u16
     }
 
-    pub fn read_16_trace(&self, addr: u16) -> u16 {
-        self.bus.borrow().read_16_trace(addr)
+    pub fn memory_write(&mut self, addr: u16, val: u8) {
+        self.cpu_write = true;
+        self.start_cpu_cycle(false);
+        self.write(addr, val);
+        self.end_cpu_cycle(false);
+        self.cpu_write = false;
     }
 
-    pub fn write(&mut self, addr: u16, val: u8) {
-        self.bus.borrow_mut().write(addr, val);
+    pub fn set_zero_neg_flags(&mut self, val: u8) {
+        self.status.set(Status::ZERO, val == 0);
+        self.status.set(Status::NEGATIVE, val & 0x80 != 0);
     }
 
-    pub fn read_16(&mut self, addr: u16) -> u16 {
-        self.bus.borrow_mut().read_16(addr)
+    pub fn set_register(&mut self, reg: Register, val: u8) {
+        match reg {
+            Register::X => self.x = val,
+            Register::Y => self.y = val,
+            Register::A => self.acc = val,
+            _ => panic!("Invalid register"),
+        }
+        self.set_zero_neg_flags(val);
     }
 
-    fn stack_push(&mut self, data: u8) {
-        self.write(STACK_BASE + self.sp as u16, data);
+    fn push(&mut self, data: u8) {
+        self.memory_write(0x100 + self.sp as u16, data);
         self.sp = self.sp.wrapping_sub(1);
     }
 
-    fn stack_pop(&mut self) -> u8 {
+    fn pop(&mut self) -> u8 {
         self.sp = self.sp.wrapping_add(1);
-        self.read(STACK_BASE + self.sp as u16)
+        self.memory_read(0x100 + self.sp as u16)
     }
 
-    fn stack_push_16(&mut self, data: u16) {
-        self.stack_push((data >> 8) as u8);
-        self.stack_push((data & 0xff) as u8);
+    fn push_word(&mut self, data: u16) {
+        self.push((data >> 8) as u8);
+        self.push((data & 0xff) as u8);
     }
 
-    fn stack_pop_16(&mut self) -> u16 {
-        let lo = self.stack_pop() as u16;
-        let hi = self.stack_pop() as u16;
+    fn pop_word(&mut self) -> u16 {
+        let lo = self.pop() as u16;
+        let hi = self.pop() as u16;
         (hi << 8) | lo
     }
 
-    pub fn get_absolute_addr_trace(&self, mode: AddressingMode, addr: u16) -> Option<(u16, bool)> {
+    pub fn get_absolute_addr_trace(
+        &mut self,
+        mode: AddressingMode,
+        addr: u16,
+    ) -> Option<(u16, bool)> {
         match mode {
             AddressingMode::Immediate => Some((addr, false)),
             AddressingMode::ZeroPage => Some((self.read_trace(addr) as u16, false)),
@@ -157,12 +234,12 @@ impl CPU<'_> {
                 Some((self.read_trace(addr).wrapping_add(self.y) as u16, false))
             }
             AddressingMode::Absolute => Some((self.read_16_trace(addr) as u16, false)),
-            AddressingMode::AbsoluteX => {
+            AddressingMode::AbsoluteX | AddressingMode::AbsoluteXW => {
                 let ptr = self.read_16_trace(addr);
                 let inc = ptr.wrapping_add(self.x as u16);
                 Some((inc, ptr & 0xff00 != inc & 0xff00))
             }
-            AddressingMode::AbsoluteY => {
+            AddressingMode::AbsoluteY | AddressingMode::AbsoluteYW => {
                 let ptr = self.read_16_trace(addr);
                 let inc = ptr.wrapping_add(self.y as u16);
                 Some((inc, ptr & 0xff00 != inc & 0xff00))
@@ -175,7 +252,7 @@ impl CPU<'_> {
                     false,
                 ))
             }
-            AddressingMode::IndirectIndexed => {
+            AddressingMode::IndirectIndexed | AddressingMode::IndirectIndexedW => {
                 let ptr = self.read_trace(addr);
                 let deref = (self.read_trace((ptr as u8).wrapping_add(1) as u16) as u16) << 8
                     | (self.read_trace(ptr as u16) as u16);
@@ -186,66 +263,223 @@ impl CPU<'_> {
         }
     }
 
-    pub fn get_absolute_addr(&mut self, mode: AddressingMode, addr: u16) -> Option<(u16, bool)> {
-        match mode {
-            AddressingMode::Immediate => Some((addr, false)),
-            AddressingMode::ZeroPage => Some((self.read(addr) as u16, false)),
-            AddressingMode::ZeroPageX => Some((self.read(addr).wrapping_add(self.x) as u16, false)),
-            AddressingMode::ZeroPageY => Some((self.read(addr).wrapping_add(self.y) as u16, false)),
-            AddressingMode::Absolute => Some((self.read_16(addr) as u16, false)),
-            AddressingMode::AbsoluteX => {
-                let ptr = self.read_16(addr);
-                let inc = ptr.wrapping_add(self.x as u16);
-                Some((inc, ptr & 0xff00 != inc & 0xff00))
-            }
-            AddressingMode::AbsoluteY => {
-                let ptr = self.read_16(addr);
-                let inc = ptr.wrapping_add(self.y as u16);
-                Some((inc, ptr & 0xff00 != inc & 0xff00))
-            }
-            AddressingMode::IndexedIndirect => {
-                let ptr: u8 = self.read(addr).wrapping_add(self.x);
-                Some((
-                    (self.read(ptr.wrapping_add(1) as u16) as u16) << 8
-                        | (self.read(ptr as u16) as u16),
-                    false,
-                ))
-            }
-            AddressingMode::IndirectIndexed => {
-                let ptr = self.read(addr);
-                let deref = (self.read((ptr as u8).wrapping_add(1) as u16) as u16) << 8
-                    | (self.read(ptr as u16) as u16);
-                let inc = deref.wrapping_add(self.y as u16);
-                Some((inc, deref & 0xff00 != inc & 0xff00))
-            }
-            _ => None,
+    fn read_byte(&mut self) -> u8 {
+        let val = self.memory_read(self.pc);
+        self.pc += 1;
+        val
+    }
+
+    fn read_word(&mut self) -> u16 {
+        let val = self.memory_read_word(self.pc);
+        self.pc += 2;
+        val
+    }
+
+    fn get_ind(&mut self) -> u16 {
+        let addr = self.operand;
+        if (addr & 0xff) == 0xff {
+            let lo = self.memory_read(addr);
+            let hi = self.memory_read(addr.wrapping_sub(0xff));
+            lo as u16 | (hi as u16) << 8
+        } else {
+            self.memory_read_word(addr)
         }
     }
 
-    pub fn get_operand_addr(&mut self, mode: AddressingMode) -> Option<u16> {
-        self.get_absolute_addr(mode, self.pc).map(|(addr, _)| addr)
+    fn get_immediate(&mut self) -> u8 {
+        self.read_byte()
+    }
+
+    fn get_zero_addr(&mut self) -> u8 {
+        self.read_byte()
+    }
+
+    fn get_zero_x_addr(&mut self) -> u8 {
+        let val = self.read_byte();
+        self.memory_read(val as u16);
+        val.wrapping_add(self.x)
+    }
+
+    fn get_zero_y_addr(&mut self) -> u8 {
+        let val = self.read_byte();
+        self.memory_read(val as u16);
+        val.wrapping_add(self.y)
+    }
+
+    fn dummy_read(&mut self) {
+        self.memory_read(self.pc);
+    }
+
+    fn get_ind_addr(&mut self) -> u16 {
+        self.read_word()
+    }
+
+    fn get_ind_x_addr(&mut self) -> u16 {
+        let mut zero = self.read_byte();
+        self.memory_read(zero as u16);
+        zero = zero.wrapping_add(self.x);
+        if zero == 0xff {
+            (self.memory_read(0xff) as u16) | ((self.memory_read(0x00) as u16) << 8)
+        } else {
+            self.memory_read_word(zero as u16)
+        }
+    }
+
+    fn get_abs_addr(&mut self) -> u16 {
+        self.read_word()
+    }
+
+    fn check_page_crossed(val_a: u16, val_b: u8) -> bool {
+        ((val_a.wrapping_add(val_b as u16)) & 0xFF00) != (val_a & 0xFF00)
+    }
+
+    fn check_page_crossed_i8(val_a: u16, val_b: i8) -> bool {
+        let sum = match val_b {
+            i8::MIN..=0 => val_a.wrapping_sub(val_b.unsigned_abs() as u16),
+            1..=i8::MAX => val_a.wrapping_add(val_b as u16),
+        };
+        (sum & 0xFF00) != (val_a & 0xFF00)
+    }
+
+    fn get_ind_y_addr(&mut self, dummy_read: bool) -> u16 {
+        let zero = self.read_byte();
+        let addr = if zero == 0xFF {
+            self.memory_read(0xff) as u16 | ((self.memory_read(0x00) as u16) << 8)
+        } else {
+            self.memory_read_word(zero as u16)
+        };
+        let page_crossed = Self::check_page_crossed(addr, self.y);
+        if page_crossed || dummy_read {
+            let offset = if page_crossed { 0x100 } else { 0 };
+            self.memory_read(addr.wrapping_add(self.y as u16).wrapping_sub(offset));
+        }
+        addr.wrapping_add(self.y as u16)
+    }
+
+    fn get_abs_x_addr(&mut self, dummy_read: bool) -> u16 {
+        let base_addr = self.read_word();
+        let page_crossed = Self::check_page_crossed(base_addr, self.x);
+        if page_crossed || dummy_read {
+            let offset = if page_crossed { 0x100 } else { 0 };
+            self.memory_read(base_addr.wrapping_add(self.x as u16).wrapping_sub(offset));
+        }
+        base_addr.wrapping_add(self.x as u16)
+    }
+
+    fn get_abs_y_addr(&mut self, dummy_read: bool) -> u16 {
+        let addr = self.read_word();
+        let page_crossed = Self::check_page_crossed(addr, self.y);
+        if page_crossed || dummy_read {
+            let offset = if page_crossed { 0x100 } else { 0 };
+            self.memory_read(addr.wrapping_add(self.y as u16).wrapping_sub(offset));
+        }
+        addr.wrapping_add(self.y as u16)
+    }
+
+    pub fn fetch_operand(&mut self) -> u16 {
+        match self.instr_addr_mode {
+            AddressingMode::Accumulator | AddressingMode::Implicit => {
+                self.dummy_read();
+                0
+            }
+            AddressingMode::Immediate | AddressingMode::Relative => self.get_immediate() as u16,
+            AddressingMode::ZeroPage => self.get_zero_addr() as u16,
+            AddressingMode::ZeroPageX => self.get_zero_x_addr() as u16,
+            AddressingMode::ZeroPageY => self.get_zero_y_addr() as u16,
+            AddressingMode::Indirect => self.get_ind_addr() as u16,
+            AddressingMode::IndexedIndirect => self.get_ind_x_addr() as u16,
+            AddressingMode::IndirectIndexed => self.get_ind_y_addr(false) as u16,
+            AddressingMode::IndirectIndexedW => self.get_ind_y_addr(true) as u16,
+            AddressingMode::Absolute => self.get_abs_addr(),
+            AddressingMode::AbsoluteX => self.get_abs_x_addr(false),
+            AddressingMode::AbsoluteXW => self.get_abs_x_addr(true),
+            AddressingMode::AbsoluteY => self.get_abs_y_addr(false),
+            AddressingMode::AbsoluteYW => self.get_abs_y_addr(true),
+        }
     }
 
     pub fn reset(&mut self) {
-        let val = self.read_16(0xFFFC);
-        self.reset_with_val(val);
+        self.bus.borrow_mut().set_nmi_generated(false);
+        self.irq_flag = false;
+        self.need_halt = false;
+
+        self.pc = self.read(0xFFFC) as u16 | ((self.read(0xFFFD) as u16) << 8);
+
+        self.acc = 0;
+        self.x = 0;
+        self.sp = 0xFD;
+        self.y = 0;
+        self.status = Status { bits: 0x04 };
+
+        self.run_irq = false;
+
+        self.cycle_count = 0u64.wrapping_sub(1);
+        self.master_clock = 0;
+        self.ppu_offset = 1;
+
+        self.master_clock += 12;
+
+        (0..8).for_each(|_| {
+            self.start_cpu_cycle(true);
+            self.end_cpu_cycle(true);
+        });
     }
 
-    pub fn reset_with_val(&mut self, val: u16) {
-        self.pc = val;
-        self.bus.borrow_mut().tick(8);
+    fn get_nmi_flag(&self) -> bool {
+        self.bus.borrow().ppu.nmi_generated
+    }
+
+    fn start_cpu_cycle(&mut self, is_read: bool) {
+        self.master_clock += if is_read {
+            self.start_clock_count.wrapping_sub(1)
+        } else {
+            self.start_clock_count.wrapping_add(1)
+        } as u64;
+        self.cycle_count = self.cycle_count.wrapping_add(1);
+        self.run_to(self.master_clock - self.ppu_offset as u64);
+    }
+
+    fn end_cpu_cycle(&mut self, is_read: bool) {
+        self.master_clock += if is_read {
+            self.end_clock_count.wrapping_add(1)
+        } else {
+            self.end_clock_count.wrapping_sub(1)
+        } as u64;
+        self.run_to(self.master_clock - self.ppu_offset as u64);
+
+        self.prev_need_nmi = self.need_nmi;
+
+        if !self.prev_nmi_flag && self.get_nmi_flag() {
+            self.need_nmi = true;
+        }
+        self.prev_nmi_flag = self.get_nmi_flag();
+
+        self.prev_run_irq = self.run_irq;
+        self.run_irq = self.irq_flag && !self.status.contains(Status::INTERRUPT_DISABLE)
+    }
+
+    fn get_op_code(&mut self) -> u8 {
+        let op_code = self.memory_read(self.pc);
+        self.pc += 1;
+        op_code
+    }
+
+    fn get_operand_val(&mut self) -> u8 {
+        match self.instr_addr_mode {
+            AddressingMode::Accumulator
+            | AddressingMode::Implicit
+            | AddressingMode::Immediate
+            | AddressingMode::Relative => self.operand as u8,
+            _ => self.memory_read(self.operand),
+        }
     }
 
     pub fn run(&mut self, cycles: u64) {
-        // self.log();
-        while self.bus.borrow().get_cycles() < cycles {
-            if self.bus.borrow_mut().poll_nmi() {
-                self.nmi();
-            }
+        while self.cycle_count < cycles {
+            self.log();
+            let opcode = self.get_op_code();
 
-            let opcode = self.read(self.pc);
             let searched_op = OPS.binary_search_by_key(&opcode, |op| op.hex);
-
             let op = if searched_op.is_err() {
                 println!("Invalid opcode: {:02X}", opcode);
                 &OPS[OPS
@@ -254,19 +488,21 @@ impl CPU<'_> {
             } else {
                 &OPS[OPS.binary_search_by_key(&opcode, |op| op.hex).unwrap()]
             };
-
-            self.pc += 1;
-
-            let pc_copy = self.pc;
+            self.instr_addr_mode = op.addressing_mode;
+            self.operand = self.fetch_operand();
 
             match op.name {
-                "AND" => self.and(op.addressing_mode),
-                "ADC" => self.adc(op.addressing_mode),
-                "ASL" => self.asl(op.addressing_mode),
+                "AND" => self.and(),
+                "ADC" => self.adc(),
+                "*ANC" => self.anc(),
+                "*ARR" => self.arr(),
+                "ASL" => self.asl(),
+                "*ASR" => self.asr(),
+                "*AXS" => self.axs(),
                 "BCC" => self.bcc(),
                 "BCS" => self.bcs(),
                 "BEQ" => self.beq(),
-                "BIT" => self.bit(op.addressing_mode),
+                "BIT" => self.bit(),
                 "BPL" => self.bpl(),
                 "BMI" => self.bmi(),
                 "BNE" => self.bne(),
@@ -277,47 +513,50 @@ impl CPU<'_> {
                 "CLD" => self.cld(),
                 "CLI" => self.cli(),
                 "CLV" => self.clv(),
-                "CMP" => self.cmp(op.addressing_mode),
-                "CPX" => self.cpx(op.addressing_mode),
-                "CPY" => self.cpy(op.addressing_mode),
-                "*DCP" => self.dcp(op.addressing_mode),
-                "DEC" => self.dec(op.addressing_mode),
+                "CMP" => self.cmp(),
+                "CPX" => self.cpx(),
+                "CPY" => self.cpy(),
+                "*DCP" => self.dcp(),
+                "DEC" => self.dec(),
                 "DEX" => self.dex(),
                 "DEY" => self.dey(),
-                "EOR" => self.eor(op.addressing_mode),
-                "INC" => self.inc(op.addressing_mode),
+                "EOR" => self.eor(),
+                "INC" => self.inc(),
                 "INX" => self.inx(),
                 "INY" => self.iny(),
-                "*ISB" => self.isb(op.addressing_mode),
-                "JMP" => self.jmp(op.addressing_mode),
+                "*ISB" => self.isb(),
+                "JMP" => self.jmp(),
                 "JSR" => self.jsr(),
-                "*LAX" => self.lax(op.addressing_mode),
-                "LDA" => self.lda(op.addressing_mode),
-                "LDX" => self.ldx(op.addressing_mode),
-                "LDY" => self.ldy(op.addressing_mode),
-                "LSR" => self.lsr(op.addressing_mode),
-                "NOP" | "*NOP" => self.nop(op.addressing_mode),
-                "ORA" => self.ora(op.addressing_mode),
+                "*LAX" => self.lax(),
+                "LDA" => self.lda(),
+                "LDX" => self.ldx(),
+                "LDY" => self.ldy(),
+                "LSR" => self.lsr(),
+                "*LXA" => self.lxa(),
+                "NOP" | "*NOP" => self.nop(),
+                "ORA" => self.ora(),
                 "PHA" => self.pha(),
                 "PHP" => self.php(),
                 "PLA" => self.pla(),
                 "PLP" => self.plp(),
-                "ROL" => self.rol(op.addressing_mode),
-                "ROR" => self.ror(op.addressing_mode),
-                "*RLA" => self.rla(op.addressing_mode),
-                "*RRA" => self.rra(op.addressing_mode),
+                "ROL" => self.rol(),
+                "ROR" => self.ror(),
+                "*RLA" => self.rla(),
+                "*RRA" => self.rra(),
                 "RTI" => self.rti(),
                 "RTS" => self.rts(),
-                "*SAX" => self.sax(op.addressing_mode),
-                "SBC" | "*SBC" => self.sbc(op.addressing_mode),
+                "*SAX" => self.sax(),
+                "SBC" | "*SBC" => self.sbc(),
                 "SEC" => self.sec(),
                 "SED" => self.sed(),
                 "SEI" => self.sei(),
-                "*SLO" => self.slo(op.addressing_mode),
-                "*SRE" => self.sre(op.addressing_mode),
-                "STA" => self.sta(op.addressing_mode),
-                "STY" => self.sty(op.addressing_mode),
-                "STX" => self.stx(op.addressing_mode),
+                "*SHX" => self.shx(),
+                "*SHY" => self.shy(),
+                "*SLO" => self.slo(),
+                "*SRE" => self.sre(),
+                "STA" => self.sta(),
+                "STY" => self.sty(),
+                "STX" => self.stx(),
                 "TAX" => self.tax(),
                 "TAY" => self.tay(),
                 "TSX" => self.tsx(),
@@ -327,14 +566,9 @@ impl CPU<'_> {
                 _ => panic!("Unknown opcode: {:02x}", opcode),
             }
 
-            // In case of jumps and branches
-            if pc_copy == self.pc {
-                self.pc += op.size - 1;
+            if self.prev_run_irq || self.prev_need_nmi {
+                self.irq();
             }
-
-            self.bus.borrow_mut().tick(op.cycles as u64);
-
-            // self.log();
         }
     }
 }

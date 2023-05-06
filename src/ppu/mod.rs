@@ -1,10 +1,11 @@
-use std::{cell::RefCell, rc::Rc};
+use std::cell::RefCell;
+use std::rc::Rc;
 
-use crate::ppu::palettes::Palette;
 use crate::{
     frame::Frame,
     mappers::{Mapper, Mirroring},
 };
+use crate::ppu::palettes::Palette;
 
 use self::registers::{control::Control, mask::Mask, status::Status};
 
@@ -52,13 +53,13 @@ pub struct PPU {
     name_table2: [u8; 0x0400],
     name_table3: [u8; 0x0400],
 
-    cycle: u64,
-    scanline: i16,
+    pub(crate) cycle: u64,
+    pub(crate) scanline: i16,
     palette: [u8; 0x0020],
     colors: Palette,
     pub curr_frame: Frame,
 
-    nmi_generated: bool,
+    pub nmi_generated: bool,
     mapper: Rc<RefCell<dyn Mapper>>,
 
     // Represents the first cycle a BG pixel or sprite can be draw. Modified by mask and enable
@@ -83,9 +84,12 @@ pub struct PPU {
     next_tile: Tile,
 
     // PPU internal registers https://www.nesdev.org/wiki/PPU_scrolling#PPU_internal_registers
-    vram_addr: u16,      // v
-    temp_vram_addr: u16, // t, represents addr of top left onscreen tile
-    x_scroll: u8,        // x
+    vram_addr: u16,
+    // v
+    temp_vram_addr: u16,
+    // t, represents addr of top left onscreen tile
+    x_scroll: u8,
+    // x
     w: bool,             // w
 
     sprite_index: u8,
@@ -110,6 +114,8 @@ pub struct PPU {
     ppu_bus_address: u16,
     update_vram_addr_delay: u8,
     update_vram_addr: u16,
+    master_clock: u64,
+    pub open_bus: u8,
 }
 
 impl PPU {
@@ -126,13 +132,17 @@ impl PPU {
             name_table1: [0; 0x0400],
             name_table2: [0; 0x0400],
             name_table3: [0; 0x0400],
-            palette: [0; 0x0020],
+            palette: [
+                0x09, 0x01, 0x00, 0x01, 0x00, 0x02, 0x02, 0x0D, 0x08, 0x10, 0x08, 0x24, 0x00, 0x00,
+                0x04, 0x2C, 0x09, 0x01, 0x34, 0x03, 0x00, 0x04, 0x00, 0x14, 0x08, 0x3A, 0x00, 0x02,
+                0x00, 0x20, 0x2C, 0x08,
+            ],
             colors: Palette::default(),
-            mapper: mapper.clone(),
             cycle: 0,
             scanline: 0,
-            nmi_generated: false,
             curr_frame: Frame::new(),
+            nmi_generated: false,
+            mapper,
             minimum_draw_bg_cycle: 0,
             minimum_draw_sprite_cycle: 0,
             high_bit_shift: 0,
@@ -159,7 +169,7 @@ impl PPU {
             first_visible_sprite_addr: 0,
             last_visible_sprite_addr: 0,
             sprite_0_visible: false,
-            frame_count: 0,
+            frame_count: 1,
             prev_rendering_enabled: false,
             rendering_enabled: false,
             need_state_update: false,
@@ -168,6 +178,8 @@ impl PPU {
             ppu_bus_address: 0,
             update_vram_addr_delay: 0,
             update_vram_addr: 0,
+            master_clock: 0,
+            open_bus: 0,
         }
     }
 
@@ -175,10 +187,10 @@ impl PPU {
         if self.scanline >= 240 || !self.is_rendering_enabled() {
             self.vram_addr = (self.vram_addr
                 + (if self.ctrl.contains(Control::INCREMENT) {
-                    32
-                } else {
-                    1
-                }))
+                32
+            } else {
+                1
+            }))
                 & 0x7FFF;
             self.set_bus_address(self.vram_addr & 0x3fff);
         } else {
@@ -256,37 +268,29 @@ impl PPU {
     }
 
     fn update_minimum_draw_cycles(&mut self) {
-        self.minimum_draw_bg_cycle = if self.mask.contains(Mask::SHOW_BACKGROUND) {
-            if self.mask.contains(Mask::SHOW_LEFT_BACKGROUND) {
-                0
-            } else {
-                8
-            }
-        } else {
-            300
+        self.minimum_draw_bg_cycle = match (
+            self.mask.contains(Mask::SHOW_BACKGROUND),
+            self.mask.contains(Mask::SHOW_LEFT_BACKGROUND),
+        ) {
+            (true, true) => 0,
+            (true, false) => 8,
+            (false, _) => 300,
         };
-        self.minimum_draw_sprite_cycle = if self.mask.contains(Mask::SHOW_SPRITES) {
-            if self.mask.contains(Mask::SHOW_LEFT_SPRITES) {
-                0
-            } else {
-                8
-            }
-        } else {
-            300
+        self.minimum_draw_sprite_cycle = match (
+            self.mask.contains(Mask::SHOW_SPRITES),
+            self.mask.contains(Mask::SHOW_LEFT_SPRITES),
+        ) {
+            (true, true) => 0,
+            (true, false) => 8,
+            (false, _) => 300,
         };
     }
 
-    // Get NMI *and* reset it
-    pub fn poll_nmi(&mut self) -> bool {
-        let nmi = self.nmi_generated;
-        self.nmi_generated = false;
-        nmi
-    }
-
-    pub fn run_to(&mut self, scanline: i16, cycle: u64) -> bool {
+    pub fn run_to(&mut self, cycle: u64) -> bool {
         let mut new_frame = false;
-        while self.scanline != scanline || self.cycle != cycle {
+        while self.master_clock + 4 <= cycle {
             new_frame |= self.run();
+            self.master_clock += 4;
         }
         new_frame
     }
@@ -361,7 +365,7 @@ impl PPU {
             let tile_addr_1 =
                 ((tile_idx as u16 & 0x01) * 0x1000) | ((tile_idx as u16 & !0x01) << 4);
             let tile_addr_2 = (if line_offset >= 8 {
-                line_offset + 8
+                line_offset.wrapping_add(8)
             } else {
                 line_offset
             }) as u16;
@@ -369,10 +373,10 @@ impl PPU {
         } else {
             ((tile_idx as u16) << 4)
                 | ((if self.ctrl.contains(Control::SPRITE_PATTERN_ADDR) {
-                    0x1000
-                } else {
-                    0x0000
-                }) + line_offset as u16)
+                0x1000
+            } else {
+                0x0000
+            }) + line_offset as u16)
         };
 
         if self.sprite_index < self.current_sprite_count && sprite_y < 240 {
@@ -465,12 +469,12 @@ impl PPU {
                         if !self.sprite_in_range
                             && self.scanline >= self.oam_copy_buffer as i16
                             && self.scanline
-                                < (self.oam_copy_buffer
-                                    + if self.ctrl.contains(Control::SPRITE_SIZE) {
-                                        16
-                                    } else {
-                                        8
-                                    }) as i16
+                            < (self.oam_copy_buffer
+                            + if self.ctrl.contains(Control::SPRITE_SIZE) {
+                            16
+                        } else {
+                            8
+                        }) as i16
                         {
                             self.sprite_in_range = true;
                         }
@@ -514,13 +518,17 @@ impl PPU {
                                     self.sprite_addr_l = 0;
                                 }
 
-                                if self.overflow_bug_counter == 0 {
-                                    self.overflow_bug_counter = 3;
-                                } else if self.overflow_bug_counter > 0 {
-                                    self.overflow_bug_counter -= 1;
-                                    if self.overflow_bug_counter == 0 {
+                                match self.overflow_bug_counter {
+                                    0 => {
+                                        self.overflow_bug_counter = 3;
+                                    }
+                                    1 => {
+                                        self.overflow_bug_counter = 0;
                                         self.oam_copy_done = true;
                                         self.sprite_addr_l = 0;
+                                    }
+                                    _ => {
+                                        self.overflow_bug_counter -= 1;
                                     }
                                 }
                             } else {
@@ -605,6 +613,9 @@ impl PPU {
             }
         } else if (self.cycle == 337 || self.cycle == 339) && self.is_rendering_enabled() {
             self.read_vram(self.get_nametable_addr());
+            if self.scanline == -1 && self.cycle == 339 && (self.frame_count % 2 == 1) {
+                self.cycle = 340;
+            }
         }
     }
 
@@ -736,7 +747,15 @@ impl PPU {
     pub fn read_ppudata_trace(&self, addr: usize) -> u8 {
         match addr {
             0x0000..=0x1fff => self.mapper.borrow().read_chr_rom(addr as u16),
-            0x2000..=0x23ff => self.name_table0[(addr - 0x2000) as usize],
+            0x2000 => self.ctrl.bits(),
+            0x2001 => self.mask.bits(),
+            0x2002 => self.status,
+            0x2003 => self.sprite_ram_addr as u8,
+            0x2004 => self.sprite_ram[self.sprite_ram_addr as usize],
+            0x2005 => self.x_scroll,
+            0x2006 => self.temp_vram_addr as u8,
+            0x2007 => self.memory_read_buffer,
+            0x2008..=0x23ff => self.name_table0[(addr - 0x2000) as usize],
             0x2400..=0x27ff => self.name_table1[(addr - 0x2400) as usize],
             0x2800..=0x2bff => self.name_table2[(addr - 0x2800) as usize],
             0x2c00..=0x2fff => self.name_table3[(addr - 0x2c00) as usize],
@@ -796,7 +815,7 @@ impl PPU {
         } else {
             self.current_tile
         })
-        .palette_offset
+            .palette_offset
             + background_color as u32) as u8
     }
 
@@ -873,9 +892,9 @@ impl PPU {
                 val &= 0xe3;
             }
             self.sprite_ram[self.sprite_ram_addr as usize] = val;
-            self.sprite_ram_addr += 1;
+            self.sprite_ram_addr = (self.sprite_ram_addr + 1) & 0xff;
         } else {
-            self.sprite_ram_addr += 4;
+            self.sprite_ram_addr = (self.sprite_ram_addr + 4) & 0xff;
         }
     }
 
@@ -903,6 +922,8 @@ impl PPU {
     fn write_to_nametable(&mut self, addr: usize, data: u8) {
         let mirroring = self.mapper.borrow().get_mirroring();
         match mirroring {
+            Mirroring::SingleScreenA => self.name_table0[addr % 0x400] = data,
+            Mirroring::SingleScreenB => self.name_table1[addr % 0x400] = data,
             Mirroring::FourScreen => match addr {
                 0x2000..=0x23ff => self.name_table0[addr - 0x2000] = data,
                 0x2400..=0x27ff => self.name_table1[addr - 0x2400] = data,
@@ -956,17 +977,32 @@ impl PPU {
 
     fn read_vram(&mut self, addr: u16) -> u8 {
         self.set_bus_address(addr);
-        match addr {
-            0x0000..=0x1fff => self.mapper.borrow().read_chr_rom(addr as u16),
-            0x2000..=0x23ff => self.name_table0[(addr - 0x2000) as usize],
-            0x2400..=0x27ff => self.name_table1[(addr - 0x2400) as usize],
-            0x2800..=0x2bff => self.name_table2[(addr - 0x2800) as usize],
-            0x2c00..=0x2fff => self.name_table3[(addr - 0x2c00) as usize],
-            0x3000..=0x3eff => self.read_vram(addr - 0x1000),
-            _ => {
-                println!("Invalid address {:#X}", addr);
-                0
-            }
+        let mirroring = self.mapper.borrow().get_mirroring();
+        match mirroring {
+            Mirroring::SingleScreenA => match addr {
+                0x0000..=0x1fff => self.mapper.borrow().read_chr_rom(addr),
+                0x2000..=0x2fff => self.name_table0[(addr % 0x400) as usize],
+                0x3000..=0x3eff => self.read_vram(addr - 0x1000),
+                _ => panic!("Invalid address {:#X}", addr),
+            },
+            Mirroring::SingleScreenB => match addr {
+                0x0000..=0x1fff => self.mapper.borrow().read_chr_rom(addr),
+                0x2000..=0x2fff => self.name_table1[(addr % 0x400) as usize],
+                0x3000..=0x3eff => self.read_vram(addr - 0x1000),
+                _ => panic!("Invalid address {:#X}", addr),
+            },
+            _ => match addr {
+                0x0000..=0x1fff => self.mapper.borrow().read_chr_rom(addr as u16),
+                0x2000..=0x23ff => self.name_table0[(addr - 0x2000) as usize],
+                0x2400..=0x27ff => self.name_table1[(addr - 0x2400) as usize],
+                0x2800..=0x2bff => self.name_table2[(addr - 0x2800) as usize],
+                0x2c00..=0x2fff => self.name_table3[(addr - 0x2c00) as usize],
+                0x3000..=0x3eff => self.read_vram(addr - 0x1000),
+                _ => {
+                    println!("Invalid address {:#X}", addr);
+                    0
+                }
+            },
         }
     }
 }

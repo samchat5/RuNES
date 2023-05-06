@@ -1,4 +1,4 @@
-use crate::cpu::{AddressingMode, Register, Status, CPU};
+use crate::cpu::{Register, CPU};
 
 use super::arithmetic::Arithmetic;
 
@@ -8,78 +8,71 @@ pub enum IncDec {
 }
 
 pub(crate) trait IncDecOps: Arithmetic {
-    fn inc_dec(&mut self, mode: AddressingMode, op: IncDec);
+    fn inc_dec(&mut self, op: IncDec);
 
-    fn inc_dec_reg(&mut self, reg: Register, op: IncDec);
+    fn isb(&mut self);
 
-    fn isb(&mut self, mode: AddressingMode) {
-        self.inc(mode);
-        self.sbc_no_inc(mode);
+    fn inc(&mut self) {
+        self.inc_dec(IncDec::INC)
     }
 
-    fn inc(&mut self, mode: AddressingMode) {
-        self.inc_dec(mode, IncDec::INC);
+    fn inx(&mut self);
+
+    fn iny(&mut self);
+
+    fn dec(&mut self) {
+        self.inc_dec(IncDec::DEC);
     }
 
-    fn inx(&mut self) {
-        self.inc_dec_reg(Register::X, IncDec::INC);
-    }
+    fn dex(&mut self);
 
-    fn iny(&mut self) {
-        self.inc_dec_reg(Register::Y, IncDec::INC);
-    }
+    fn dey(&mut self);
 
-    fn dec(&mut self, mode: AddressingMode) {
-        self.inc_dec(mode, IncDec::DEC);
-    }
-
-    fn dex(&mut self) {
-        self.inc_dec_reg(Register::X, IncDec::DEC);
-    }
-
-    fn dey(&mut self) {
-        self.inc_dec_reg(Register::Y, IncDec::DEC);
-    }
-
-    fn dcp(&mut self, mode: AddressingMode) {
-        self.dec(mode);
-        self.cmp(mode);
-    }
+    fn dcp(&mut self);
 }
 
 impl IncDecOps for CPU<'_> {
-    fn inc_dec(&mut self, mode: AddressingMode, op: IncDec) {
-        let addr = self.get_operand_addr(mode).unwrap();
+    fn inc_dec(&mut self, op: IncDec) {
+        let addr = self.operand;
+        let val = self.memory_read(addr);
+        self.memory_write(addr, val); // Dummy write
         let val = match op {
-            IncDec::DEC => self.read(addr).wrapping_sub(1),
-            IncDec::INC => self.read(addr).wrapping_add(1),
+            IncDec::DEC => val.wrapping_sub(1),
+            IncDec::INC => val.wrapping_add(1),
         };
-        self.write(addr, val);
-        self.status.set(Status::ZERO, val == 0);
-        self.status.set(Status::NEGATIVE, val & 0x80 != 0);
+        self.set_zero_neg_flags(val);
+        self.memory_write(addr, val);
     }
 
-    fn inc_dec_reg(&mut self, reg: Register, op: IncDec) {
-        let val = match (reg, op) {
-            (Register::X, IncDec::INC) => {
-                self.x = self.x.wrapping_add(1);
-                self.x
-            }
-            (Register::X, IncDec::DEC) => {
-                self.x = self.x.wrapping_sub(1);
-                self.x
-            }
-            (Register::Y, IncDec::INC) => {
-                self.y = self.y.wrapping_add(1);
-                self.y
-            }
-            (Register::Y, IncDec::DEC) => {
-                self.y = self.y.wrapping_sub(1);
-                self.y
-            }
-            _ => panic!("Invalid register for inc/dec"),
-        };
-        self.status.set(Status::ZERO, val == 0);
-        self.status.set(Status::NEGATIVE, val & 0x80 != 0);
+    fn isb(&mut self) {
+        let mut val = self.get_operand_val();
+        self.memory_write(self.operand, val);
+        val = val.wrapping_add(1);
+        self.add(val ^ 0xFF);
+        self.memory_write(self.operand, val);
+    }
+
+    fn inx(&mut self) {
+        self.set_register(Register::X, self.x.wrapping_add(1));
+    }
+
+    fn iny(&mut self) {
+        self.set_register(Register::Y, self.y.wrapping_add(1));
+    }
+
+    fn dex(&mut self) {
+        self.set_register(Register::X, self.x.wrapping_sub(1));
+    }
+
+    fn dey(&mut self) {
+        self.set_register(Register::Y, self.y.wrapping_sub(1));
+    }
+
+    fn dcp(&mut self) {
+        let mut val = self.get_operand_val();
+        self.memory_write(self.operand, val);
+        val = val.wrapping_sub(1);
+        self.cmpr(self.acc, val);
+        self.memory_write(self.operand, val);
     }
 }

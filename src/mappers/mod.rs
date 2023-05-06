@@ -5,6 +5,8 @@ pub enum Mirroring {
     Horizontal,
     Vertical,
     FourScreen,
+    SingleScreenA,
+    SingleScreenB,
 }
 
 pub trait Mapper {
@@ -27,5 +29,15 @@ pub trait Mapper {
     fn write_16(&mut self, addr: u16, data: u16) {
         self.write(addr, data as u8);
         self.write(addr + 1, (data >> 8) as u8);
+    }
+
+    fn read_trace(&self, addr: u16) -> u8 {
+        self.read(addr)
+    }
+
+    fn read_16_trace(&self, addr: u16) -> u16 {
+        let low = self.read_trace(addr);
+        let high = self.read_trace(addr + 1);
+        (high as u16) << 8 | low as u16
     }
 }

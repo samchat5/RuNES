@@ -1,13 +1,15 @@
-use itertools::Itertools;
 use std::{cell::RefCell, rc::Rc};
 
-use crate::ines_parser::Flags1Enum;
-use crate::joypad::Joypad;
+use itertools::Itertools;
+
 use crate::{
     ines_parser::File,
-    mappers::{nrom::NROM, Mapper},
+    mappers::{Mapper, nrom::NROM},
     ppu::PPU,
 };
+use crate::ines_parser::Flags1Enum;
+use crate::joypad::Joypad;
+use crate::mappers::mmc1::MMC1;
 
 const RAM_SIZE: usize = 0x0800;
 const RAM_START: u16 = 0x0000;
@@ -25,29 +27,39 @@ pub struct Bus<'a> {
     apu_io: [u8; APU_IO_SIZE],
     pub ppu: PPU,
     joypad: Joypad,
-    cpu_cycles: u64,
     pub mapper: Rc<RefCell<dyn Mapper>>,
-    callback: CallbackType<'a>,
+    pub callback: CallbackType<'a>,
 }
 
 impl<'a> Bus<'a> {
     pub fn new<F>(file: File, callback: F) -> Bus<'a>
-    where
-        F: FnMut(&mut PPU, &mut Joypad) + 'a,
+        where
+            F: FnMut(&mut PPU, &mut Joypad) + 'a,
     {
-        let mapper = Rc::new(RefCell::new(NROM::new(
-            file.prg_rom_area,
-            file.chr_rom_area,
-            file.header.flags1.get(Flags1Enum::NAME_TABLE_MIRROR),
-        )));
+        let mapper = Self::get_mapper_from_num(file);
         Bus {
             cpu_ram: [0; RAM_SIZE],
             apu_io: [0; APU_IO_SIZE],
             mapper: mapper.clone(),
             joypad: Joypad::default(),
-            ppu: PPU::new(mapper),
-            cpu_cycles: 0,
+            ppu: PPU::new(mapper.clone()),
             callback: Box::new(callback),
+        }
+    }
+
+    fn get_mapper_from_num(file: File) -> Rc<RefCell<dyn Mapper>> {
+        let mapper_num = file.header.flags1.get(Flags1Enum::MAPPER_NUM);
+        match mapper_num {
+            0 => Rc::new(RefCell::new(NROM::new(
+                file.prg_rom_area,
+                file.chr_rom_area,
+                file.header.flags1.get(Flags1Enum::NAME_TABLE_MIRROR),
+            ))),
+            1 => Rc::new(RefCell::new(MMC1::new(
+                file.prg_rom_area,
+                file.chr_rom_area,
+            ))),
+            _ => panic!("Unsupported mapper {}", mapper_num),
         }
     }
 
@@ -65,28 +77,8 @@ impl<'a> Bus<'a> {
         (high as u16) << 8 | low as u16
     }
 
-    pub fn get_cycles(&self) -> u64 {
-        self.cpu_cycles
-    }
-
-    pub fn tick(&mut self, cycles: u64) {
-        let prev_ppu_cycles = self.cpu_cycles * 3;
-        let prev_ppu_scanline = (prev_ppu_cycles / 341) % 262;
-        let prev_ppu_cycle = prev_ppu_cycles % 341;
-
-        self.cpu_cycles += cycles;
-        let ppu_cycles = self.cpu_cycles * 3;
-        let mut ppu_scanline = ((ppu_cycles / 341) % 262) as i16;
-        let ppu_cycle = ppu_cycles % 341;
-
-        if ppu_scanline == 261 {
-            ppu_scanline = -1;
-        }
-
-        let new_frame = self.ppu.run_to(ppu_scanline, ppu_cycle);
-        if new_frame {
-            (self.callback)(&mut self.ppu, &mut self.joypad);
-        }
+    pub fn call_new_frame(&mut self) {
+        (self.callback)(&mut self.ppu, &mut self.joypad);
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
@@ -116,10 +108,6 @@ impl<'a> Bus<'a> {
     pub fn write_16(&mut self, addr: u16, data: u16) {
         self.write(addr, data as u8);
         self.write(addr + 1, (data >> 8) as u8);
-    }
-
-    pub fn poll_nmi(&mut self) -> bool {
-        self.ppu.poll_nmi()
     }
 
     fn execute_apu_io_read(&mut self, addr: u16) -> u8 {
@@ -169,6 +157,7 @@ impl<'a> Bus<'a> {
     }
 
     fn execute_ppu_write(&mut self, addr: u16, data: u8) {
+        self.ppu.open_bus = data;
         let mapped_addr = (addr - PPU_REG_START) % 8;
         match mapped_addr {
             0 => self.ppu.write_ppuctrl(data),
@@ -180,6 +169,16 @@ impl<'a> Bus<'a> {
             6 => self.ppu.write_ppuaddr(data),
             7 => self.ppu.write_ppudata(data),
             _ => unreachable!(),
+        }
+    }
+
+    pub fn set_nmi_generated(&mut self, nmi: bool) {
+        self.ppu.nmi_generated = nmi;
+    }
+
+    pub(crate) fn run_to(&mut self, cyc: u64) {
+        if self.ppu.run_to(cyc) {
+            self.call_new_frame();
         }
     }
 }

@@ -47,12 +47,9 @@ impl Mapper for NROM {
         self.chr_rom[addr as usize]
     }
 
-    fn write_chr_rom(&mut self, addr: u16, data: u8) {
-        self.chr_rom[addr as usize] = data;
-    }
-
     fn read(&self, addr: u16) -> u8 {
         match addr {
+            0x6000..=0x7FFF => self.undefined_area[(addr - 0x6000) as usize],
             0x8000..=0xBFFF => self.prg_rom[(addr - 0x8000) as usize],
             0xC000..=0xFFFF => match self.prg_rom_mode {
                 PRGRomMode::PRG16k => self.prg_rom[(addr - 0xC000) as usize],
@@ -66,5 +63,9 @@ impl Mapper for NROM {
         if addr < 0x7FFF {
             self.undefined_area[(addr - 0x4020) as usize] = data;
         }
+    }
+
+    fn write_chr_rom(&mut self, addr: u16, data: u8) {
+        self.chr_rom[addr as usize] = data;
     }
 }

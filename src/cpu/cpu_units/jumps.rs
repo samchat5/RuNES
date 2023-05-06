@@ -1,7 +1,9 @@
 use crate::cpu::{AddressingMode, CPU};
 
 pub trait Jumps {
-    fn jmp(&mut self, mode: AddressingMode);
+    fn jmp_to_addr(&mut self, addr: u16);
+
+    fn jmp(&mut self);
 
     fn jsr(&mut self);
 
@@ -9,27 +11,34 @@ pub trait Jumps {
 }
 
 impl Jumps for CPU<'_> {
-    fn jmp(&mut self, mode: AddressingMode) {
-        match mode {
-            AddressingMode::Absolute => self.pc = self.read_16(self.pc),
-            _ => {
-                // Emulate page boundary bug
-                let addr = self.read_16(self.pc);
-                self.pc = if addr & 0x00ff == 0x00ff {
-                    (self.read(addr & 0xff00) as u16) << 8 | self.read(addr) as u16
-                } else {
-                    self.read_16(addr)
-                };
+    fn jmp_to_addr(&mut self, addr: u16) {
+        self.pc = addr
+    }
+
+    fn jmp(&mut self) {
+        match self.instr_addr_mode {
+            AddressingMode::Absolute => {
+                self.jmp_to_addr(self.operand);
             }
+            AddressingMode::Indirect => {
+                let val = self.get_ind();
+                self.jmp_to_addr(val)
+            }
+            _ => unreachable!(),
         }
     }
 
     fn jsr(&mut self) {
-        self.stack_push_16(self.pc + 1);
-        self.pc = self.read_16(self.pc);
+        let addr = self.operand;
+        self.dummy_read();
+        self.push_word(self.pc - 1);
+        self.jmp_to_addr(addr);
     }
 
     fn rts(&mut self) {
-        self.pc = self.stack_pop_16() + 1;
+        let addr = self.pop_word();
+        self.dummy_read();
+        self.dummy_read();
+        self.pc = addr + 1;
     }
 }

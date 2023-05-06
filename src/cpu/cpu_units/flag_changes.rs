@@ -1,4 +1,4 @@
-use crate::cpu::{Status, CPU};
+use crate::cpu::{CPU, Status};
 
 pub trait FlagChanges {
     fn flag(&mut self, flag: Status, set: bool);

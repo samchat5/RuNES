@@ -1,4 +1,4 @@
-use crate::cpu::{AddressingMode, Status, CPU};
+use crate::cpu::{Register, Status, CPU};
 
 pub enum LogicalOp {
     EOR,
@@ -7,80 +7,73 @@ pub enum LogicalOp {
 }
 
 pub trait Logical {
-    fn bit_op(&mut self, mode: AddressingMode, op: LogicalOp, does_inc_cycle: bool);
+    fn bit_op(&mut self, op: LogicalOp);
 
-    fn bit(&mut self, mode: AddressingMode);
+    fn bit(&mut self);
 
-    fn and(&mut self, mode: AddressingMode) {
-        self.bit_op(mode, LogicalOp::AND, true);
+    fn anc(&mut self);
+
+    fn asr(&mut self);
+
+    fn arr(&mut self);
+
+    fn and(&mut self) {
+        self.bit_op(LogicalOp::AND);
     }
 
-    fn and_no_inc(&mut self, mode: AddressingMode) {
-        self.bit_op(mode, LogicalOp::AND, false);
+    fn ora(&mut self) {
+        self.bit_op(LogicalOp::ORA);
     }
 
-    fn ora(&mut self, mode: AddressingMode) {
-        self.bit_op(mode, LogicalOp::ORA, true);
-    }
-
-    fn ora_no_inc(&mut self, mode: AddressingMode) {
-        self.bit_op(mode, LogicalOp::ORA, false);
-    }
-
-    fn eor(&mut self, mode: AddressingMode) {
-        self.bit_op(mode, LogicalOp::EOR, true);
-    }
-
-    fn eor_no_inc(&mut self, mode: AddressingMode) {
-        self.bit_op(mode, LogicalOp::EOR, false);
+    fn eor(&mut self) {
+        self.bit_op(LogicalOp::EOR);
     }
 }
 
 impl Logical for CPU<'_> {
-    fn bit_op(&mut self, mode: AddressingMode, op: LogicalOp, does_inc_cycles: bool) {
-        let (addr, inc_cycles) = self.get_absolute_addr(mode, self.pc).unwrap();
-        let val = self.read(addr);
-        if inc_cycles && does_inc_cycles {
-            self.bus.borrow_mut().tick(1);
-        }
-        self.acc = match op {
-            LogicalOp::AND => self.acc & val,
-            LogicalOp::ORA => self.acc | val,
-            LogicalOp::EOR => self.acc ^ val,
-        };
-        self.status.set(Status::ZERO, self.acc == 0);
-        self.status.set(Status::NEGATIVE, self.acc & 0x80 != 0);
+    fn bit_op(&mut self, op: LogicalOp) {
+        let val = self.get_operand_val();
+        self.set_register(
+            Register::A,
+            match op {
+                LogicalOp::AND => self.acc & val,
+                LogicalOp::ORA => self.acc | val,
+                LogicalOp::EOR => self.acc ^ val,
+            },
+        );
     }
 
-    fn bit(&mut self, mode: AddressingMode) {
-        let addr = self.get_operand_addr(mode).unwrap();
-        let val = self.read(addr);
-        self.status.set(Status::ZERO, (val & self.acc) == 0);
+    fn bit(&mut self) {
+        let val = self.get_operand_val();
+        self.status.set(Status::ZERO, self.acc & val == 0);
         self.status.set(Status::NEGATIVE, val & 0x80 != 0);
         self.status.set(Status::OVERFLOW, val & 0x40 != 0);
     }
 
-    fn and(&mut self, mode: AddressingMode) {
-        self.bit_op(mode, LogicalOp::AND, true);
+    fn anc(&mut self) {
+        let op_val = self.get_operand_val();
+        self.set_register(Register::A, self.acc & op_val);
+        self.status
+            .set(Status::CARRY, self.status.contains(Status::NEGATIVE));
     }
 
-    fn and_no_inc(&mut self, mode: AddressingMode) {
-        self.bit_op(mode, LogicalOp::AND, false);
+    fn asr(&mut self) {
+        let op_val = self.get_operand_val();
+        self.set_register(Register::A, self.acc & op_val);
+        self.status.set(Status::CARRY, self.acc & 0x01 != 0);
+        self.set_register(Register::A, self.acc >> 1);
     }
 
-    fn ora(&mut self, mode: AddressingMode) {
-        self.bit_op(mode, LogicalOp::ORA, true);
-    }
-
-    fn ora_no_inc(&mut self, mode: AddressingMode) {
-        self.bit_op(mode, LogicalOp::ORA, false);
-    }
-
-    fn eor(&mut self, mode: AddressingMode) {
-        self.bit_op(mode, LogicalOp::EOR, true);
-    }
-
-    fn eor_no_inc(&mut self, mode: AddressingMode) {
-        self.bit_op(mode, LogicalOp::EOR, false);
+    fn arr(&mut self) {
+        let op_val = self.get_operand_val();
+        let and = self.acc & op_val;
+        let shift = and >> 1;
+        let carry = (self.status.contains(Status::CARRY) as u8) * 0x80;
+        self.set_register(Register::A, shift | carry);
+        self.status.set(Status::CARRY, self.acc & 0x40 != 0);
+        self.status.set(
+            Status::OVERFLOW,
+            (self.status.contains(Status::CARRY) as u8) ^ ((self.acc >> 5) & 0x01) != 0,
+        );
     }
 }

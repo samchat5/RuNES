@@ -22,7 +22,6 @@ enum SlotSelect {
     Slot1,
 }
 
-#[derive(Default)]
 struct State {
     control_reg: u8,
     chr_bank_0_reg: u8,
@@ -30,52 +29,135 @@ struct State {
     prg_bank_reg: u8,
 }
 
-#[derive(Default)]
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            control_reg: 0b0000_1100,
+            chr_bank_0_reg: 0,
+            chr_bank_1_reg: 0,
+            prg_bank_reg: 0,
+        }
+    }
+}
+
 pub struct MMC1 {
-    // write_buffer: u8,
-    shift_count: u8,
-    // chr_mode: CHRMode,
-    // prg_mode: PRGMode,
+    // CPU BANKS -----------------------------------------------------------------------------------
+    // $6000-7FFF: 8 KB PRG RAM bank (optional)
+    // $8000-BFFF: 16 KB PRG ROM bank, either switchable or fixed to the first bank
+    // $C000-FFFF: 16 KB PRG ROM bank, either fixed to the last bank or switchable
 
-    // chr_reg_0: u8,
-    // chr_reg_1: u8,
-    // prg_reg: u8,
+    // PPU BANKS -----------------------------------------------------------------------------------
+    // $0000-0FFF: 4 KB switchable CHR bank
+    // $1000-1FFF: 4 KB switchable CHR bank
 
-    // last_write_cycle: u64,
-    state: State,
-    // last_chr_reg: Register,
+    // REGISTERS -----------------------------------------------------------------------------------
+    // $8000-9FFF:  [...C PSMM]
+    //   C = CHR Mode (0=8k mode, 1=4k mode)
+    //   P = PRG Size (0=32k mode, 1=16k mode)
+    //   S = Slot select:
+    //       0 = $C000 swappable, $8000 fixed to page $00 (mode A)
+    //       1 = $8000 swappable, $C000 fixed to page $0F (mode B)
+    //       This bit is ignored when 'P' is clear (32k mode)
+    //   M = Mirroring control:
+    //       %00 = 1ScA
+    //       %01 = 1ScB
+    //       %10 = Vert
+    //       %11 = Horz
+    //
+    // $A000-BFFF:  [...C CCCC]
+    //   CHR Reg 0
+    //
+    // $C000-DFFF:  [...C CCCC]
+    //   CHR Reg 1
+    //
+    // $E000-FFFF:  [...W PPPP]
+    //   W = WRAM Disable (0=enabled, 1=disabled)
+    //   P = PRG Reg
+
+    // When writing to $8000-FFFF, it gets written to this register. When writen to 5 times, the
+    // value is copied over to the control register
     temp_reg: u8,
-
+    shift_count: u8,
+    state: State,
+    prg_ram: [u8; 0x2000],
     prg_rom: Vec<u8>,
     chr_rom: Vec<u8>,
 }
 
 impl MMC1 {
-    pub fn new(prg_rom: Vec<u8>, chr_rom: Vec<u8>) -> Self {
+    pub fn new(prg_rom: Vec<u8>, chr_rom: Option<Vec<u8>>) -> Self {
         Self {
+            prg_ram: [0; 0x2000],
             prg_rom,
-            chr_rom,
-            ..Self::default()
+            chr_rom: chr_rom.unwrap_or_else(|| vec![0; 0x2000]),
+            temp_reg: 0,
+            shift_count: 0,
+            state: State::default(),
         }
     }
 
-    fn write_control(&mut self, data: u8) {
-        let reset = (data >> 7) & 1;
-        if reset == 1 {
+    fn get_chr_mode(&self) -> CHRMode {
+        match (self.state.control_reg >> 4) & 1 {
+            0 => CHRMode::CHR8k,
+            1 => CHRMode::CHR4k,
+            _ => unreachable!(),
+        }
+    }
+
+    fn get_prg_mode(&self) -> PRGMode {
+        match (self.state.control_reg >> 3) & 1 {
+            0 => PRGMode::PRG32k,
+            1 => PRGMode::PRG16k,
+            _ => unreachable!(),
+        }
+    }
+
+    fn get_slot_select(&self) -> SlotSelect {
+        match (self.state.control_reg >> 2) & 1 {
+            0 => SlotSelect::Slot0,
+            1 => SlotSelect::Slot1,
+            _ => unreachable!(),
+        }
+    }
+
+    fn get_wram_disable(&self) -> bool {
+        self.state.prg_bank_reg >> 4 == 1
+    }
+
+    fn get_prg_bank(&self) -> usize {
+        (self.state.prg_bank_reg & 0b1111) as usize
+    }
+
+    fn get_mut_ref_reg(&mut self, register: Register) -> &mut u8 {
+        match register {
+            Register::Control => &mut self.state.control_reg,
+            Register::CHRBank0 => &mut self.state.chr_bank_0_reg,
+            Register::CHRBank1 => &mut self.state.chr_bank_1_reg,
+            Register::PRGBank => &mut self.state.prg_bank_reg,
+        }
+    }
+
+    fn write_reg(&mut self, data: u8, register: Register) {
+        if (data >> 7) & 1 == 1 {
             self.temp_reg = 0;
             self.shift_count = 0;
             self.state.control_reg |= 0b0000_1100;
         } else {
-            let bit = data & 1;
-            self.temp_reg |= bit << self.shift_count;
-
-            if self.shift_count == 4 {
-                self.state.control_reg = self.temp_reg;
+            let data_bit = data & 1;
+            self.temp_reg |= data_bit << self.shift_count;
+            self.shift_count += 1;
+            if self.shift_count == 5 {
+                *(self.get_mut_ref_reg(register)) = self.temp_reg;
                 self.temp_reg = 0;
                 self.shift_count = 0;
-            } else {
-                self.shift_count += 1;
             }
+        }
+    }
+
+    fn get_page_cnt(&self) -> usize {
+        match self.get_prg_mode() {
+            PRGMode::PRG32k => self.prg_rom.len() / 0x8000,
+            PRGMode::PRG16k => self.prg_rom.len() / 0x4000,
         }
     }
 }
@@ -83,37 +165,96 @@ impl MMC1 {
 impl Mapper for MMC1 {
     fn get_mirroring(&self) -> Mirroring {
         match self.state.control_reg & 0b11 {
-            0 => Mirroring::Horizontal,
-            1 => Mirroring::Vertical,
-            2 => Mirroring::FourScreen,
-            3 => Mirroring::FourScreen,
+            0 => Mirroring::SingleScreenA,
+            1 => Mirroring::SingleScreenB,
+            2 => Mirroring::Vertical,
+            3 => Mirroring::Horizontal,
             _ => unreachable!(),
         }
     }
 
     fn read_chr_rom(&self, addr: u16) -> u8 {
-        match self.state.control_reg & 0b1000 {
-            0 => self.chr_rom[addr as usize],
-            1 => todo!(),
-            _ => unreachable!(),
+        match self.get_chr_mode() {
+            CHRMode::CHR8k => {
+                let page = (self.state.chr_bank_0_reg >> 1) as usize;
+                self.chr_rom[(page * 8192) + addr as usize]
+            }
+            CHRMode::CHR4k => match addr {
+                0x0000..=0x0FFF => {
+                    let page = self.state.chr_bank_0_reg as usize;
+                    self.chr_rom[(page * 4096) + addr as usize]
+                }
+                0x1000..=0x1FFF => {
+                    let page = self.state.chr_bank_1_reg as usize;
+                    self.chr_rom[(page * 4096) + (addr - 0x1000) as usize]
+                }
+                _ => panic!("Invalid CHR read addr {:#X}", addr),
+            },
         }
     }
 
     fn read(&self, addr: u16) -> u8 {
-        todo!()
+        if !self.get_wram_disable() {
+            self.read_trace(addr)
+        } else {
+            panic!("WRAM disabled, cannot read from PRG");
+        }
     }
 
     fn write(&mut self, addr: u16, data: u8) {
-        match addr {
-            0x8000..=0xFFFF => {
-                self.write_control(data);
+        if !self.get_wram_disable() {
+            match addr {
+                0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize] = data,
+                0x8000..=0x9FFF => self.write_reg(data, Register::Control),
+                0xA000..=0xBFFF => self.write_reg(data, Register::CHRBank0),
+                0xC000..=0xDFFF => self.write_reg(data, Register::CHRBank1),
+                0xE000..=0xFFFF => self.write_reg(data, Register::PRGBank),
+                _ => panic!("Invalid write address: {:#X}", addr),
             }
-            _ => todo!(),
         }
-        todo!("Implement consecutive write logic for MMC1");
+        // todo!("Implement consecutive write logic for MMC1");
     }
 
     fn write_chr_rom(&mut self, addr: u16, data: u8) {
-        todo!()
+        match self.get_chr_mode() {
+            CHRMode::CHR8k => {
+                let page = (self.state.chr_bank_0_reg >> 1) as usize;
+                self.chr_rom[(page * 8192) + addr as usize] = data;
+            }
+            CHRMode::CHR4k => match addr {
+                0x0000..=0x0FFF => {
+                    let page = self.state.chr_bank_0_reg as usize;
+                    self.chr_rom[(page * 4096) + addr as usize] = data;
+                }
+                0x1000..=0x1FFF => {
+                    let page = self.state.chr_bank_1_reg as usize;
+                    self.chr_rom[(page * 4096) + (addr - 0x1000) as usize] = data;
+                }
+                _ => panic!("Invalid CHR read addr {:#X}", addr),
+            },
+        }
+    }
+
+    fn read_trace(&self, addr: u16) -> u8 {
+        if (0x6000..=0x7FFF).contains(&addr) {
+            self.prg_ram[(addr - 0x6000) as usize]
+        } else {
+            match self.get_prg_mode() {
+                PRGMode::PRG32k => {
+                    let page = self.get_prg_bank() >> 1;
+                    self.prg_rom[(page * 32768) + (addr - 0x8000) as usize]
+                }
+                _ => {
+                    let (page, offset): (usize, usize) = match (self.get_slot_select(), addr) {
+                        (SlotSelect::Slot0, 0x8000..=0xBFFF) => (0, 0x8000),
+                        (SlotSelect::Slot0, 0xC000..=0xFFFF) => (self.get_prg_bank(), 0xC000),
+                        (_, 0x8000..=0xBFFF) => (self.get_prg_bank(), 0x8000),
+                        (_, 0xC000..=0xFFFF) => (0x0F & (self.get_page_cnt() - 1), 0xC000),
+                        _ => panic!("Invalid read address: {:#X}", addr),
+                    };
+                    self.prg_rom[(page * 16384) + addr as usize - offset]
+                }
+            }
+        }
     }
 }
