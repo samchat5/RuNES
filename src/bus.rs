@@ -2,14 +2,14 @@ use std::{cell::RefCell, rc::Rc};
 
 use itertools::Itertools;
 
-use crate::{
-    ines_parser::File,
-    mappers::{Mapper, nrom::NROM},
-    ppu::PPU,
-};
 use crate::ines_parser::Flags1Enum;
 use crate::joypad::Joypad;
 use crate::mappers::mmc1::MMC1;
+use crate::{
+    ines_parser::File,
+    mappers::{nrom::NROM, Mapper},
+    ppu::PPU,
+};
 
 const RAM_SIZE: usize = 0x0800;
 const RAM_START: u16 = 0x0000;
@@ -33,8 +33,8 @@ pub struct Bus<'a> {
 
 impl<'a> Bus<'a> {
     pub fn new<F>(file: File, callback: F) -> Bus<'a>
-        where
-            F: FnMut(&mut PPU, &mut Joypad) + 'a,
+    where
+        F: FnMut(&mut PPU, &mut Joypad) + 'a,
     {
         let mapper = Self::get_mapper_from_num(file);
         Bus {
@@ -122,21 +122,11 @@ impl<'a> Bus<'a> {
     fn execute_apu_io_write(&mut self, addr: u16, data: u8) {
         let mapper_addr = (addr - APU_IO_START) % 0x1F;
         match mapper_addr {
-            0x14 => self.write_oamdma(data),
+            0x14 => self.ppu.write_oamdma(data),
             0x16 => self.joypad.write(data),
             0..=0x1f => self.apu_io[mapper_addr as usize] = data,
             _ => unreachable!(),
         }
-    }
-
-    fn write_oamdma(&mut self, data: u8) {
-        let hi = (data as u16) << 8;
-        let buffer = (0..256)
-            .map(|i| self.read(hi + i as u16))
-            .collect_vec()
-            .try_into()
-            .unwrap();
-        self.ppu.write_oamdma(buffer);
     }
 
     fn execute_ppu_read(&mut self, addr: u16) -> u8 {

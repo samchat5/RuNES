@@ -1,16 +1,21 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::ppu::palettes::Palette;
 use crate::{
     frame::Frame,
     mappers::{Mapper, Mirroring},
 };
-use crate::ppu::palettes::Palette;
 
 use self::registers::{control::Control, mask::Mask, status::Status};
 
 pub mod palettes;
 mod registers;
+
+pub enum DMAFlag {
+    Enabled(u8),
+    Disabled,
+}
 
 #[derive(Debug, Default, Clone, Copy)]
 struct Tile {
@@ -76,7 +81,7 @@ pub struct PPU {
     // OAM read and sprite eval, before sprite fetches for next scanline
     has_sprite: [bool; 257],
 
-    current_sprite_count: u8,
+    sprite_count: u8,
 
     // Buffers for current/last/nest tiles and sprites
     previous_tile: Tile,
@@ -85,12 +90,10 @@ pub struct PPU {
 
     // PPU internal registers https://www.nesdev.org/wiki/PPU_scrolling#PPU_internal_registers
     vram_addr: u16,
-    // v
-    temp_vram_addr: u16,
     // t, represents addr of top left onscreen tile
+    temp_vram_addr: u16,
     x_scroll: u8,
-    // x
-    w: bool,             // w
+    w: bool, // w
 
     sprite_index: u8,
     oam_copy_buffer: u8,
@@ -116,6 +119,7 @@ pub struct PPU {
     update_vram_addr: u16,
     master_clock: u64,
     pub open_bus: u8,
+    pub sprite_dma_transfer: DMAFlag,
 }
 
 impl PPU {
@@ -148,7 +152,7 @@ impl PPU {
             high_bit_shift: 0,
             low_bit_shift: 0,
             has_sprite: [false; 257],
-            current_sprite_count: 0,
+            sprite_count: 0,
             previous_tile: Tile::default(),
             current_tile: Tile::default(),
             next_tile: Tile::default(),
@@ -180,6 +184,7 @@ impl PPU {
             update_vram_addr: 0,
             master_clock: 0,
             open_bus: 0,
+            sprite_dma_transfer: DMAFlag::Disabled,
         }
     }
 
@@ -187,10 +192,10 @@ impl PPU {
         if self.scanline >= 240 || !self.is_rendering_enabled() {
             self.vram_addr = (self.vram_addr
                 + (if self.ctrl.contains(Control::INCREMENT) {
-                32
-            } else {
-                1
-            }))
+                    32
+                } else {
+                    1
+                }))
                 & 0x7FFF;
             self.set_bus_address(self.vram_addr & 0x3fff);
         } else {
@@ -301,7 +306,7 @@ impl PPU {
             self.scanline += 1;
             if self.scanline > 260 {
                 self.scanline = -1;
-                self.current_sprite_count = 0;
+                self.sprite_count = 0;
                 self.update_minimum_draw_cycles();
             }
             if self.scanline == -1 {
@@ -373,13 +378,13 @@ impl PPU {
         } else {
             ((tile_idx as u16) << 4)
                 | ((if self.ctrl.contains(Control::SPRITE_PATTERN_ADDR) {
-                0x1000
-            } else {
-                0x0000
-            }) + line_offset as u16)
+                    0x1000
+                } else {
+                    0x0000
+                }) + line_offset as u16)
         };
 
-        if self.sprite_index < self.current_sprite_count && sprite_y < 240 {
+        if self.sprite_index < self.sprite_count && sprite_y < 240 {
             let low_byte = self.read_vram(tile_addr);
             let high_byte = self.read_vram(tile_addr + 8);
             let info = &mut self.sprite_tiles[self.sprite_index as usize];
@@ -395,7 +400,7 @@ impl PPU {
             if self.scanline >= 0 {
                 let mut i = 0;
                 while i < 8 && (sprite_x as u16 + i + 1) < 257 {
-                    self.has_sprite[sprite_x as usize + i as usize] = true;
+                    self.has_sprite[(sprite_x as u16 + i + 1) as usize] = true;
                     i += 1;
                 }
             }
@@ -453,7 +458,7 @@ impl PPU {
                     self.last_visible_sprite_addr = self.first_visible_sprite_addr;
                 } else if self.cycle == 256 {
                     self.sprite_0_visible = self.sprite_0_added;
-                    self.current_sprite_count = (self.secondary_oam_addr >> 2) as u8;
+                    self.sprite_count = (self.secondary_oam_addr >> 2) as u8;
                 }
 
                 if self.cycle & 0x01 > 0 {
@@ -469,12 +474,12 @@ impl PPU {
                         if !self.sprite_in_range
                             && self.scanline >= self.oam_copy_buffer as i16
                             && self.scanline
-                            < (self.oam_copy_buffer
-                            + if self.ctrl.contains(Control::SPRITE_SIZE) {
-                            16
-                        } else {
-                            8
-                        }) as i16
+                                < (self.oam_copy_buffer
+                                    + if self.ctrl.contains(Control::SPRITE_SIZE) {
+                                        16
+                                    } else {
+                                        8
+                                    }) as i16
                         {
                             self.sprite_in_range = true;
                         }
@@ -724,16 +729,18 @@ impl PPU {
 
     pub fn read_ppudata(&mut self) -> u8 {
         let mut return_value = self.memory_read_buffer;
+        let mut open_bus_mask = 0x00;
         self.memory_read_buffer = self.read_vram(self.ppu_bus_address & 0x3fff);
 
         if (self.ppu_bus_address & 0x3fff) >= 0x3f00 {
-            return_value = self.read_palette_ram(self.ppu_bus_address)
+            return_value = self.read_palette_ram(self.ppu_bus_address) | self.open_bus & 0xc0;
+            open_bus_mask = 0xc0;
         }
 
         self.update_video_ram_addr();
         self.need_state_update = true;
 
-        return_value
+        return_value | (self.open_bus & open_bus_mask)
     }
 
     fn read_palette_ram(&self, addr: u16) -> u8 {
@@ -780,7 +787,7 @@ impl PPU {
         if self.has_sprite[self.cycle as usize]
             && self.cycle > self.minimum_draw_sprite_cycle as u64
         {
-            for i in 0..self.current_sprite_count {
+            for i in 0..self.sprite_count {
                 let shift = self.cycle as i32 - self.sprite_tiles[i as usize].sprite_x as i32 - 1;
                 if (0..8).contains(&shift) {
                     let sprite = self.sprite_tiles[i as usize];
@@ -815,7 +822,7 @@ impl PPU {
         } else {
             self.current_tile
         })
-            .palette_offset
+        .palette_offset
             + background_color as u32) as u8
     }
 
@@ -850,9 +857,12 @@ impl PPU {
         if self.ppu_bus_address & 0x3fff >= 0x3f00 {
             self.write_palette_ram(self.ppu_bus_address, data);
         } else if self.scanline >= 240 || !self.is_rendering_enabled() {
-            self.write_vram(self.ppu_bus_address, data);
+            self.write_vram(self.ppu_bus_address & 0x3fff, data);
         } else {
-            self.write_vram(self.ppu_bus_address, (self.ppu_bus_address & 0xff) as u8);
+            self.write_vram(
+                self.ppu_bus_address & 0x3fff,
+                (self.ppu_bus_address & 0xff) as u8,
+            );
         }
         self.update_video_ram_addr();
     }
@@ -869,7 +879,6 @@ impl PPU {
     fn write_palette_ram(&mut self, addr: u16, val: u8) {
         let addr = addr & 0x1f;
         let val = val & 0x3f;
-        self.palette[addr as usize] = val;
         match addr {
             0x00 | 0x04 | 0x08 | 0x0c => {
                 self.palette[(addr + 0x10) as usize] = val;
@@ -877,7 +886,9 @@ impl PPU {
             0x10 | 0x14 | 0x18 | 0x1c => {
                 self.palette[(addr - 0x10) as usize] = val;
             }
-            _ => {}
+            _ => {
+                self.palette[addr as usize] = val;
+            }
         }
     }
 
@@ -915,8 +926,8 @@ impl PPU {
         }
     }
 
-    pub fn write_oamdma(&mut self, data: [u8; 256]) {
-        self.sprite_ram = data;
+    pub fn write_oamdma(&mut self, data: u8) {
+        self.sprite_dma_transfer = DMAFlag::Enabled(data);
     }
 
     fn write_to_nametable(&mut self, addr: usize, data: u8) {
@@ -982,13 +993,13 @@ impl PPU {
             Mirroring::SingleScreenA => match addr {
                 0x0000..=0x1fff => self.mapper.borrow().read_chr_rom(addr),
                 0x2000..=0x2fff => self.name_table0[(addr % 0x400) as usize],
-                0x3000..=0x3eff => self.read_vram(addr - 0x1000),
+                0x3000..=0x3fff => self.read_vram(addr - 0x1000),
                 _ => panic!("Invalid address {:#X}", addr),
             },
             Mirroring::SingleScreenB => match addr {
                 0x0000..=0x1fff => self.mapper.borrow().read_chr_rom(addr),
                 0x2000..=0x2fff => self.name_table1[(addr % 0x400) as usize],
-                0x3000..=0x3eff => self.read_vram(addr - 0x1000),
+                0x3000..=0x3fff => self.read_vram(addr - 0x1000),
                 _ => panic!("Invalid address {:#X}", addr),
             },
             _ => match addr {
@@ -997,11 +1008,8 @@ impl PPU {
                 0x2400..=0x27ff => self.name_table1[(addr - 0x2400) as usize],
                 0x2800..=0x2bff => self.name_table2[(addr - 0x2800) as usize],
                 0x2c00..=0x2fff => self.name_table3[(addr - 0x2c00) as usize],
-                0x3000..=0x3eff => self.read_vram(addr - 0x1000),
-                _ => {
-                    println!("Invalid address {:#X}", addr);
-                    0
-                }
+                0x3000..=0x3fff => self.read_vram(addr - 0x1000),
+                _ => panic!("Invalid address {:#X}", addr),
             },
         }
     }

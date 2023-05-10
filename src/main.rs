@@ -14,7 +14,7 @@ fn main() {
     // let rom = File::new("tests/cpu_exec_space/test_cpu_exec_space_apu.nes"); // Fails - expected
     // let rom = File::new("tests/cpu_exec_space/test_cpu_exec_space_ppuio.nes"); // Fails - expected
 
-    // let rom = File::new("tests/cpu_interrupts_v2/cpu_interrupts.nes"); // Fails
+    let rom = File::new("tests/cpu_interrupts_v2/cpu_interrupts.nes"); // Fails - expected
 
     // let rom = File::new("tests/cpu_reset/ram_after_reset.nes"); // Fails - expected
     // let rom = File::new("tests/cpu_reset/registers.nes"); // Fails - expected
@@ -23,7 +23,7 @@ fn main() {
 
     // let rom = File::new("tests/instr_misc/instr_misc.nes"); // Fails - expected
 
-    // let rom = File::new("tests/instr_test-v5/all_instrs.nes");
+    // let rom = File::new("tests/instr_test-v5/all_instrs.nes"); // Passes
     // let rom = File::new("tests/instr_test-v5/official_only.nes"); // Passes
 
     // let rom = File::new("tests/instr_timing/instr_timing.nes"); // Fails - expected
@@ -33,39 +33,39 @@ fn main() {
     // PPU Tests -----------------------------------------------------------------------------------
     // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/palette_ram.nes"); // Passes
     // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/power_up_palette.nes"); // Passes
-    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/sprite_ram.nes"); // Fails
+    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/sprite_ram.nes"); // Passes
     // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/vbl_clear_time.nes"); // Passes
-    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/vram_access.nes"); // Fails
+    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/vram_access.nes"); // Passes
 
     // let rom = File::new("tests/stress/NEStress.NES"); // ??
 
     // let rom = File::new("tests/scrolltest/scroll.nes"); // Passes
 
-    // let rom = File::new("tests/scanline-a1/scanline.nes"); // Fails
+    // let rom = File::new("tests/scanline-a1/scanline.nes"); // Passes
 
     // let rom = File::new("tests/ppu_vbl_nmi/ppu_vbl_nmi.nes"); // Passes
 
-    // let rom = File::new("tests/window5/colorwin_ntsc.nes"); // Fails
+    // let rom = File::new("tests/window5/colorwin_ntsc.nes"); // Passes
 
     // let rom = File::new("tests/spritecans-2011/spritecans.nes"); // Passes
 
     // let rom = File::new("tests/sprite_hit_tests_2005.10.05/01.basics.nes"); // Passes
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/02.alignment.nes"); // Fails
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/03.corners.nes"); // Fails
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/04.flip.nes"); // Fails
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/05.left_clip.nes"); // Fails
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/06.right_edge.nes"); // Fails
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/07.screen_bottom.nes"); // Fails
+    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/02.alignment.nes"); // Passes
+    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/03.corners.nes"); // Passes
+    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/04.flip.nes"); // Passes
+    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/05.left_clip.nes"); // Passes
+    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/06.right_edge.nes"); // Passes
+    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/07.screen_bottom.nes"); // Passes
     // let rom = File::new("tests/sprite_hit_tests_2005.10.05/08.double_height.nes"); // Passes
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/09.timing_basics.nes"); // Fails
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/10.timing_order.nes"); // Fails
+    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/09.timing_basics.nes"); // Passes
+    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/10.timing_order.nes"); // Passes
     // let rom = File::new("tests/sprite_hit_tests_2005.10.05/11.edge_timing.nes"); // Passes
 
     // Game ROMS -----------------------------------------------------------------------------------
-    let rom = File::new("roms/mario.nes");
+    // let rom = File::new("roms/mario.nes");
     // let rom = File::new("roms/pacman.nes");
     // let rom = File::new("roms/excitebike.nes");
-    // let rom = File::new("roms/zelda.nes");
+    let rom = File::new("roms/zelda.nes");
 
     create(rom);
 }

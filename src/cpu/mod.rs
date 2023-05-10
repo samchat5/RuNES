@@ -6,6 +6,7 @@ use std::rc::Rc;
 use bitflags::bitflags;
 
 use crate::bus::Bus;
+use crate::ppu::DMAFlag;
 
 use self::{
     cpu_units::{
@@ -102,6 +103,9 @@ pub struct CPU<'a> {
     cpu_write: bool,
     operand: u16,
     prev_nmi_flag: bool,
+    sprite_dma_transfer: bool,
+    need_dummy_read: bool,
+    sprite_dma_offset: u8,
 }
 
 impl CPU<'_> {
@@ -131,7 +135,23 @@ impl CPU<'_> {
             cpu_write: false,
             operand: 0,
             prev_nmi_flag: false,
+            sprite_dma_transfer: false,
+            need_dummy_read: false,
+            sprite_dma_offset: 0,
         }
+    }
+
+    fn poll_sprite_dma_flag(&mut self) {
+        if let DMAFlag::Enabled(x) = self.bus.borrow().ppu.sprite_dma_transfer {
+            self.sprite_dma_transfer = true;
+            self.sprite_dma_offset = x;
+            self.need_halt = true
+        }
+    }
+
+    fn set_sprite_dma_transfer(&mut self, val: bool) {
+        self.bus.borrow_mut().ppu.sprite_dma_transfer = DMAFlag::Disabled;
+        self.sprite_dma_transfer = val;
     }
 
     fn read_trace(&mut self, addr: u16) -> u8 {
@@ -162,7 +182,57 @@ impl CPU<'_> {
         self.sink = stream;
     }
 
+    fn process_pending_dma(&mut self, addr: u16) {
+        self.poll_sprite_dma_flag();
+        if self.need_halt {
+            self.start_cpu_cycle(true);
+            self.read(addr);
+            self.end_cpu_cycle(true);
+            self.need_halt = false;
+
+            let mut sprite_dma_counter = 0u16;
+            let mut sprite_read_addr = 0u8;
+            let mut read_val = 0u8;
+            let skip_dummy_reads = addr == 0x4016 || addr == 0x4017;
+
+            while self.sprite_dma_transfer {
+                if self.cycle_count & 0x01 == 0 {
+                    self.process_cycle();
+                    read_val =
+                        self.read(self.sprite_dma_offset as u16 * 0x100 + sprite_read_addr as u16);
+                    self.end_cpu_cycle(true);
+                    sprite_read_addr += 1;
+                    sprite_dma_counter += 1;
+                } else if self.sprite_dma_transfer && sprite_dma_counter & 0x01 != 0 {
+                    self.process_cycle();
+                    self.write(0x2004, read_val);
+                    self.end_cpu_cycle(true);
+                    sprite_dma_counter += 1;
+                    if sprite_dma_counter == 0x200 {
+                        self.set_sprite_dma_transfer(false);
+                    }
+                } else {
+                    self.process_cycle();
+                    if !skip_dummy_reads {
+                        self.read(addr);
+                    }
+                    self.end_cpu_cycle(true);
+                }
+            }
+        }
+    }
+
+    fn process_cycle(&mut self) {
+        if self.need_halt {
+            self.need_halt = false;
+        } else if self.need_dummy_read {
+            self.need_dummy_read = false;
+        }
+        self.start_cpu_cycle(true);
+    }
+
     pub fn memory_read(&mut self, addr: u16) -> u8 {
+        self.process_pending_dma(addr);
         self.start_cpu_cycle(true);
         let val = self.read(addr);
         self.end_cpu_cycle(true);
