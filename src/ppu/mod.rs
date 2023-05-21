@@ -2,10 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::ppu::palettes::Palette;
-use crate::{
-    frame::Frame,
-    mappers::{Mapper, Mirroring},
-};
+use crate::{frame::Frame, mappers::Mapper};
 
 use self::registers::{control::Control, mask::Mask, status::Status};
 
@@ -51,12 +48,6 @@ pub struct PPU {
     sprite_ram: [u8; 0x100],
     // Contains the 8 sprites that will be drawn on the next scanline
     sprite_tiles: [Sprite; 8],
-
-    // Name tables
-    name_table0: [u8; 0x0400],
-    name_table1: [u8; 0x0400],
-    name_table2: [u8; 0x0400],
-    name_table3: [u8; 0x0400],
 
     pub(crate) cycle: u64,
     pub(crate) scanline: i16,
@@ -132,10 +123,6 @@ impl PPU {
             sprite_ram_addr: 0,
             sprite_ram: [0; 0x100],
             sprite_tiles: [Sprite::default(); 8],
-            name_table0: [0; 0x0400],
-            name_table1: [0; 0x0400],
-            name_table2: [0; 0x0400],
-            name_table3: [0; 0x0400],
             palette: [
                 0x09, 0x01, 0x00, 0x01, 0x00, 0x02, 0x02, 0x0D, 0x08, 0x10, 0x08, 0x24, 0x00, 0x00,
                 0x04, 0x2C, 0x09, 0x01, 0x34, 0x03, 0x00, 0x04, 0x00, 0x14, 0x08, 0x3A, 0x00, 0x02,
@@ -762,10 +749,7 @@ impl PPU {
             0x2005 => self.x_scroll,
             0x2006 => self.temp_vram_addr as u8,
             0x2007 => self.memory_read_buffer,
-            0x2008..=0x23ff => self.name_table0[(addr - 0x2000) as usize],
-            0x2400..=0x27ff => self.name_table1[(addr - 0x2400) as usize],
-            0x2800..=0x2bff => self.name_table2[(addr - 0x2800) as usize],
-            0x2c00..=0x2fff => self.name_table3[(addr - 0x2c00) as usize],
+            0x2008..=0x2fff => self.mapper.borrow().read_nametable(addr as u16),
             0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => self.palette[addr - 0x3f10],
             0x3f00..=0x3fff => self.palette[(addr - 0x3f00) % 0x20],
             _ => panic!("Invalid address {:#X}", addr),
@@ -854,7 +838,7 @@ impl PPU {
     }
 
     pub fn write_ppudata(&mut self, data: u8) {
-        if self.ppu_bus_address & 0x3fff >= 0x3f00 {
+        if (self.ppu_bus_address & 0x3fff) >= 0x3f00 {
             self.write_palette_ram(self.ppu_bus_address, data);
         } else if self.scanline >= 240 || !self.is_rendering_enabled() {
             self.write_vram(self.ppu_bus_address & 0x3fff, data);
@@ -871,7 +855,7 @@ impl PPU {
         self.set_bus_address(addr);
         match addr {
             0x0000..=0x1fff => self.mapper.borrow_mut().write_chr_rom(addr, val),
-            0x2000..=0x3eff => self.write_to_nametable(addr as usize, val),
+            0x2000..=0x3eff => self.mapper.borrow_mut().write_nametable(addr, val),
             _ => panic!("Invalid address {:#X}", addr),
         }
     }
@@ -879,6 +863,7 @@ impl PPU {
     fn write_palette_ram(&mut self, addr: u16, val: u8) {
         let addr = addr & 0x1f;
         let val = val & 0x3f;
+        self.palette[addr as usize] = val;
         match addr {
             0x00 | 0x04 | 0x08 | 0x0c => {
                 self.palette[(addr + 0x10) as usize] = val;
@@ -886,9 +871,7 @@ impl PPU {
             0x10 | 0x14 | 0x18 | 0x1c => {
                 self.palette[(addr - 0x10) as usize] = val;
             }
-            _ => {
-                self.palette[addr as usize] = val;
-            }
+            _ => {}
         }
     }
 
@@ -930,87 +913,13 @@ impl PPU {
         self.sprite_dma_transfer = DMAFlag::Enabled(data);
     }
 
-    fn write_to_nametable(&mut self, addr: usize, data: u8) {
-        let mirroring = self.mapper.borrow().get_mirroring();
-        match mirroring {
-            Mirroring::SingleScreenA => self.name_table0[addr % 0x400] = data,
-            Mirroring::SingleScreenB => self.name_table1[addr % 0x400] = data,
-            Mirroring::FourScreen => match addr {
-                0x2000..=0x23ff => self.name_table0[addr - 0x2000] = data,
-                0x2400..=0x27ff => self.name_table1[addr - 0x2400] = data,
-                0x2800..=0x2bff => self.name_table2[addr - 0x2800] = data,
-                0x2c00..=0x2fff => self.name_table3[addr - 0x2c00] = data,
-                0x3000..=0x3eff => self.write_to_nametable(addr - 0x1000, data),
-                _ => panic!("Invalid address {:#X}", addr),
-            },
-            Mirroring::Horizontal => match addr {
-                0x2000..=0x23ff => {
-                    self.name_table0[addr - 0x2000] = data;
-                    self.name_table1[addr - 0x2000] = data;
-                }
-                0x2400..=0x27ff => {
-                    self.name_table0[addr - 0x2400] = data;
-                    self.name_table1[addr - 0x2400] = data;
-                }
-                0x2800..=0x2bff => {
-                    self.name_table2[addr - 0x2800] = data;
-                    self.name_table3[addr - 0x2800] = data;
-                }
-                0x2c00..=0x2fff => {
-                    self.name_table2[addr - 0x2c00] = data;
-                    self.name_table3[addr - 0x2c00] = data;
-                }
-                0x3000..=0x3eff => self.write_to_nametable(addr - 0x1000, data),
-                _ => panic!("Invalid address {:#X}", addr),
-            },
-            Mirroring::Vertical => match addr {
-                0x2000..=0x23ff => {
-                    self.name_table0[addr - 0x2000] = data;
-                    self.name_table2[addr - 0x2000] = data;
-                }
-                0x2400..=0x27ff => {
-                    self.name_table1[addr - 0x2400] = data;
-                    self.name_table3[addr - 0x2400] = data;
-                }
-                0x2800..=0x2bff => {
-                    self.name_table0[addr - 0x2800] = data;
-                    self.name_table2[addr - 0x2800] = data;
-                }
-                0x2c00..=0x2fff => {
-                    self.name_table1[addr - 0x2c00] = data;
-                    self.name_table3[addr - 0x2c00] = data;
-                }
-                0x3000..=0x3eff => self.write_to_nametable(addr - 0x1000, data),
-                _ => panic!("Invalid address {:#X}", addr),
-            },
-        }
-    }
-
     fn read_vram(&mut self, addr: u16) -> u8 {
         self.set_bus_address(addr);
-        let mirroring = self.mapper.borrow().get_mirroring();
-        match mirroring {
-            Mirroring::SingleScreenA => match addr {
-                0x0000..=0x1fff => self.mapper.borrow().read_chr_rom(addr),
-                0x2000..=0x2fff => self.name_table0[(addr % 0x400) as usize],
-                0x3000..=0x3fff => self.read_vram(addr - 0x1000),
-                _ => panic!("Invalid address {:#X}", addr),
-            },
-            Mirroring::SingleScreenB => match addr {
-                0x0000..=0x1fff => self.mapper.borrow().read_chr_rom(addr),
-                0x2000..=0x2fff => self.name_table1[(addr % 0x400) as usize],
-                0x3000..=0x3fff => self.read_vram(addr - 0x1000),
-                _ => panic!("Invalid address {:#X}", addr),
-            },
-            _ => match addr {
-                0x0000..=0x1fff => self.mapper.borrow().read_chr_rom(addr as u16),
-                0x2000..=0x23ff => self.name_table0[(addr - 0x2000) as usize],
-                0x2400..=0x27ff => self.name_table1[(addr - 0x2400) as usize],
-                0x2800..=0x2bff => self.name_table2[(addr - 0x2800) as usize],
-                0x2c00..=0x2fff => self.name_table3[(addr - 0x2c00) as usize],
-                0x3000..=0x3fff => self.read_vram(addr - 0x1000),
-                _ => panic!("Invalid address {:#X}", addr),
-            },
+        match addr {
+            0x0000..=0x1fff => self.mapper.borrow().read_chr_rom(addr),
+            0x2000..=0x2fff => self.mapper.borrow().read_nametable(addr),
+            0x3000..=0x3fff => self.read_vram(addr - 0x1000),
+            _ => panic!("Invalid address {:#X}", addr),
         }
     }
 }

@@ -1,7 +1,5 @@
 use std::{cell::RefCell, rc::Rc};
 
-use itertools::Itertools;
-
 use crate::ines_parser::Flags1Enum;
 use crate::joypad::Joypad;
 use crate::mappers::mmc1::MMC1;

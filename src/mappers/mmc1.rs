@@ -82,6 +82,7 @@ pub struct MMC1 {
     prg_ram: [u8; 0x2000],
     prg_rom: Vec<u8>,
     chr_rom: Vec<u8>,
+    nametables: [[u8; 0x400]; 2],
 }
 
 impl MMC1 {
@@ -93,6 +94,7 @@ impl MMC1 {
             temp_reg: 0,
             shift_count: 0,
             state: State::default(),
+            nametables: [[0; 0x400]; 2],
         }
     }
 
@@ -233,6 +235,14 @@ impl Mapper for MMC1 {
                 _ => panic!("Invalid CHR read addr {:#X}", addr),
             },
         }
+    }
+
+    fn write_nametable_idx(&mut self, idx: usize, addr: u16, val: u8) {
+        self.nametables[idx][addr as usize] = val;
+    }
+
+    fn read_nametable_idx(&self, idx: usize, addr: u16) -> u8 {
+        self.nametables[idx][addr as usize]
     }
 
     fn read_trace(&self, addr: u16) -> u8 {

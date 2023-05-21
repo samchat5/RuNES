@@ -13,6 +13,7 @@ pub struct NROM {
     pub chr_rom: Vec<u8>,
     prg_rom_mode: PRGRomMode,
     mirroring: u8,
+    nametables: [[u8; 0x400]; 2],
 }
 
 impl NROM {
@@ -30,6 +31,7 @@ impl NROM {
                 None => vec![0; 8192],
             },
             mirroring,
+            nametables: [[0; 0x400]; 2],
         }
     }
 }
@@ -67,5 +69,13 @@ impl Mapper for NROM {
 
     fn write_chr_rom(&mut self, addr: u16, data: u8) {
         self.chr_rom[addr as usize] = data;
+    }
+
+    fn write_nametable_idx(&mut self, idx: usize, addr: u16, val: u8) {
+        self.nametables[idx][addr as usize] = val;
+    }
+
+    fn read_nametable_idx(&self, idx: usize, addr: u16) -> u8 {
+        self.nametables[idx][addr as usize]
     }
 }

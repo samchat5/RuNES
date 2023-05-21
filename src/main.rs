@@ -14,7 +14,7 @@ fn main() {
     // let rom = File::new("tests/cpu_exec_space/test_cpu_exec_space_apu.nes"); // Fails - expected
     // let rom = File::new("tests/cpu_exec_space/test_cpu_exec_space_ppuio.nes"); // Fails - expected
 
-    let rom = File::new("tests/cpu_interrupts_v2/cpu_interrupts.nes"); // Fails - expected
+    // let rom = File::new("tests/cpu_interrupts_v2/cpu_interrupts.nes"); // Fails - expected
 
     // let rom = File::new("tests/cpu_reset/ram_after_reset.nes"); // Fails - expected
     // let rom = File::new("tests/cpu_reset/registers.nes"); // Fails - expected
@@ -31,7 +31,7 @@ fn main() {
     // let rom = File::new("tests/nestest/nestest.nes"); // Passes
 
     // PPU Tests -----------------------------------------------------------------------------------
-    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/palette_ram.nes"); // Passes
+    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/palette_ram.nes"); // Fails - expected
     // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/power_up_palette.nes"); // Passes
     // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/sprite_ram.nes"); // Passes
     // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/vbl_clear_time.nes"); // Passes
@@ -146,7 +146,7 @@ fn create(rom: File) {
             .open("log.log")
             .unwrap(),
     ));
-    // cpu.enable_logging();
+    cpu.enable_logging();
     cpu.reset();
     cpu.run(u64::MAX);
 }

@@ -201,7 +201,7 @@ impl CPU<'_> {
                     read_val =
                         self.read(self.sprite_dma_offset as u16 * 0x100 + sprite_read_addr as u16);
                     self.end_cpu_cycle(true);
-                    sprite_read_addr += 1;
+                    sprite_read_addr = sprite_read_addr.wrapping_add(1);
                     sprite_dma_counter += 1;
                 } else if self.sprite_dma_transfer && sprite_dma_counter & 0x01 != 0 {
                     self.process_cycle();
