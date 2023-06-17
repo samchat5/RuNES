@@ -41,7 +41,7 @@ impl Joypad {
         if self.button_idx > 7 {
             return 1;
         }
-        let ret = (self.buttons.bits & (1 << self.button_idx)) >> self.button_idx;
+        let ret = (self.buttons.bits() & (1 << self.button_idx)) >> self.button_idx;
         if !self.is_strobe_on && self.button_idx <= 7 {
             self.button_idx += 1;
         }

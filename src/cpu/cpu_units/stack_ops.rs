@@ -22,7 +22,7 @@ impl StackOps for CPU<'_> {
     }
 
     fn php(&mut self) {
-        let flags = self.status.bits | Status::BREAK.bits | Status::BREAK2.bits;
+        let flags = self.status.bits() | Status::BREAK.bits() | Status::BREAK2.bits();
         self.push(flags);
     }
 

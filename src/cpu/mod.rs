@@ -33,13 +33,13 @@ bitflags! {
         const BREAK2 = 0x20;
         const OVERFLOW = 0x40;
         const NEGATIVE = 0x80;
-        const STATUS = Self::CARRY.bits
-            | Self::ZERO.bits
-            | Self::INTERRUPT_DISABLE.bits
-            | Self::DECIMAL_MODE.bits
-            | Self::BREAK.bits
-            | Self::OVERFLOW.bits
-            | Self::NEGATIVE.bits;
+        const STATUS = Self::CARRY.bits()
+            | Self::ZERO.bits()
+            | Self::INTERRUPT_DISABLE.bits()
+            | Self::DECIMAL_MODE.bits()
+            | Self::BREAK.bits()
+            | Self::OVERFLOW.bits()
+            | Self::NEGATIVE.bits();
     }
 }
 
@@ -154,12 +154,12 @@ impl CPU<'_> {
         self.sprite_dma_transfer = val;
     }
 
-    fn read_trace(&mut self, addr: u16) -> u8 {
-        self.bus.borrow_mut().read_trace(addr)
+    fn read_trace(&self, addr: u16) -> u8 {
+        self.bus.borrow().read_trace(addr)
     }
 
-    fn read_16_trace(&mut self, addr: u16) -> u16 {
-        self.bus.borrow_mut().read_16_trace(addr)
+    fn read_16_trace(&self, addr: u16) -> u16 {
+        self.bus.borrow().read_16_trace(addr)
     }
 
     fn read(&mut self, addr: u16) -> u8 {
@@ -289,11 +289,7 @@ impl CPU<'_> {
         (hi << 8) | lo
     }
 
-    pub fn get_absolute_addr_trace(
-        &mut self,
-        mode: AddressingMode,
-        addr: u16,
-    ) -> Option<(u16, bool)> {
+    pub fn get_absolute_addr_trace(&self, mode: AddressingMode, addr: u16) -> Option<(u16, bool)> {
         match mode {
             AddressingMode::Immediate => Some((addr, false)),
             AddressingMode::ZeroPage => Some((self.read_trace(addr) as u16, false)),
@@ -303,7 +299,7 @@ impl CPU<'_> {
             AddressingMode::ZeroPageY => {
                 Some((self.read_trace(addr).wrapping_add(self.y) as u16, false))
             }
-            AddressingMode::Absolute => Some((self.read_16_trace(addr) as u16, false)),
+            AddressingMode::Absolute => Some((self.read_16_trace(addr), false)),
             AddressingMode::AbsoluteX | AddressingMode::AbsoluteXW => {
                 let ptr = self.read_16_trace(addr);
                 let inc = ptr.wrapping_add(self.x as u16);
@@ -324,7 +320,7 @@ impl CPU<'_> {
             }
             AddressingMode::IndirectIndexed | AddressingMode::IndirectIndexedW => {
                 let ptr = self.read_trace(addr);
-                let deref = (self.read_trace((ptr as u8).wrapping_add(1) as u16) as u16) << 8
+                let deref = (self.read_trace((ptr).wrapping_add(1) as u16) as u16) << 8
                     | (self.read_trace(ptr as u16) as u16);
                 let inc = deref.wrapping_add(self.y as u16);
                 Some((inc, deref & 0xff00 != inc & 0xff00))
@@ -456,10 +452,10 @@ impl CPU<'_> {
             AddressingMode::ZeroPage => self.get_zero_addr() as u16,
             AddressingMode::ZeroPageX => self.get_zero_x_addr() as u16,
             AddressingMode::ZeroPageY => self.get_zero_y_addr() as u16,
-            AddressingMode::Indirect => self.get_ind_addr() as u16,
-            AddressingMode::IndexedIndirect => self.get_ind_x_addr() as u16,
-            AddressingMode::IndirectIndexed => self.get_ind_y_addr(false) as u16,
-            AddressingMode::IndirectIndexedW => self.get_ind_y_addr(true) as u16,
+            AddressingMode::Indirect => self.get_ind_addr(),
+            AddressingMode::IndexedIndirect => self.get_ind_x_addr(),
+            AddressingMode::IndirectIndexed => self.get_ind_y_addr(false),
+            AddressingMode::IndirectIndexedW => self.get_ind_y_addr(true),
             AddressingMode::Absolute => self.get_abs_addr(),
             AddressingMode::AbsoluteX => self.get_abs_x_addr(false),
             AddressingMode::AbsoluteXW => self.get_abs_x_addr(true),

@@ -15,13 +15,13 @@ bitflags! {
 
 impl Default for Mask {
     fn default() -> Mask {
-        Mask::empty()
+        Mask::from_bits_truncate(0)
     }
 }
 
 impl Mask {
     pub fn new() -> Mask {
-        Mask::empty()
+        Mask::default()
     }
 
     pub fn write(&mut self, val: u8) {

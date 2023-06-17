@@ -17,7 +17,7 @@ impl SysFuncs for CPU<'_> {
 
     fn brk(&mut self) {
         self.push_word(self.pc + 1);
-        let flags = self.status.bits | Status::BREAK.bits | Status::BREAK2.bits;
+        let flags = self.status.bits() | Status::BREAK.bits() | Status::BREAK2.bits();
         if self.need_nmi {
             self.need_nmi = false;
             self.push(flags);
@@ -43,11 +43,11 @@ impl SysFuncs for CPU<'_> {
         self.push_word(self.pc);
         if self.need_nmi {
             self.need_nmi = false;
-            self.push(self.status.bits | Status::BREAK2.bits);
+            self.push(self.status.bits() | Status::BREAK2.bits());
             self.status.set(Status::INTERRUPT_DISABLE, true);
             self.pc = self.memory_read_word(0xfffa);
         } else {
-            self.push(self.status.bits | Status::BREAK2.bits);
+            self.push(self.status.bits() | Status::BREAK2.bits());
             self.status.set(Status::INTERRUPT_DISABLE, true);
             self.pc = self.memory_read_word(0xfffe);
         }
