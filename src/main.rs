@@ -12,12 +12,9 @@ fn main() {
     // let rom = File::new("tests/cpu_dummy_writes/cpu_dummy_writes_ppumem.nes"); // Fails - expected
 
     // let rom = File::new("tests/cpu_exec_space/test_cpu_exec_space_apu.nes"); // Fails - expected
-    // let rom = File::new("tests/cpu_exec_space/test_cpu_exec_space_ppuio.nes"); // Fails - expected
+    // let rom = File::new("tests/cpu_exec_space/test_cpu_exec_space_ppuio.nes"); // Passes
 
     // let rom = File::new("tests/cpu_interrupts_v2/cpu_interrupts.nes"); // Fails - expected
-
-    // let rom = File::new("tests/cpu_reset/ram_after_reset.nes"); // Fails - expected
-    // let rom = File::new("tests/cpu_reset/registers.nes"); // Fails - expected
 
     // let rom = File::new("tests/cpu_timing_test6/cpu_timing_test.nes"); // Passes
 
@@ -37,7 +34,7 @@ fn main() {
     // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/vbl_clear_time.nes"); // Passes
     // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/vram_access.nes"); // Passes
 
-    let rom = File::new("tests/stress/NEStress.NES"); // ??
+    // let rom = File::new("tests/stress/NEStress.NES"); // ??
 
     // let rom = File::new("tests/scrolltest/scroll.nes"); // Passes
 
@@ -65,7 +62,7 @@ fn main() {
     // let rom = File::new("roms/mario.nes");
     // let rom = File::new("roms/pacman.nes");
     // let rom = File::new("roms/excitebike.nes");
-    // let rom = File::new("roms/zelda.nes");
+    let rom = File::new("roms/zelda.nes");
 
     create(rom);
 }
@@ -146,7 +143,7 @@ fn create(rom: File) {
             .open("log.log")
             .unwrap(),
     ));
-    // cpu.enable_logging();
+    cpu.enable_logging();
     cpu.reset();
-    cpu.run(u64::MAX);
+    cpu.run(1_000_000);
 }

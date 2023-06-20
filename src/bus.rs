@@ -129,7 +129,8 @@ impl<'a> Bus<'a> {
 
     fn execute_ppu_read(&mut self, addr: u16) -> u8 {
         let mapped_addr = (addr - PPU_REG_START) % 8;
-        match mapped_addr {
+        let mut open_bus_mask = 0xff;
+        let ret = match mapped_addr {
             0 | 1 | 3 | 5 | 6 => {
                 println!(
                     "Attempted to read from write-only PPU register 0x200{}",
@@ -137,15 +138,24 @@ impl<'a> Bus<'a> {
                 );
                 0
             }
-            2 => self.ppu.read_ppustatus(),
-            4 => self.ppu.read_oamdata(),
-            7 => self.ppu.read_ppudata(),
+            2 => self.ppu.read_ppustatus(&mut open_bus_mask),
+            4 => {
+                open_bus_mask = 0x0;
+                self.ppu.read_oamdata()
+            }
+            7 => {
+                open_bus_mask = 0xc0;
+                self.ppu.read_ppudata()
+            }
             _ => unreachable!(),
-        }
+        };
+        self.ppu.apply_open_bus(open_bus_mask, ret)
     }
 
     fn execute_ppu_write(&mut self, addr: u16, data: u8) {
-        self.ppu.open_bus = data;
+        if addr != 0x4014 {
+            self.ppu.set_open_bus(0xff, data);
+        }
         let mapped_addr = (addr - PPU_REG_START) % 8;
         match mapped_addr {
             0 => self.ppu.write_ppuctrl(data),

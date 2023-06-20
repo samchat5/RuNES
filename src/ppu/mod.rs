@@ -716,18 +716,16 @@ impl PPU {
 
     pub fn read_ppudata(&mut self) -> u8 {
         let mut return_value = self.memory_read_buffer;
-        let mut open_bus_mask = 0x00;
         self.memory_read_buffer = self.read_vram(self.ppu_bus_address & 0x3fff);
 
         if (self.ppu_bus_address & 0x3fff) >= 0x3f00 {
             return_value = self.read_palette_ram(self.ppu_bus_address) | self.open_bus & 0xc0;
-            open_bus_mask = 0xc0;
         }
 
         self.update_video_ram_addr();
         self.need_state_update = true;
 
-        return_value | (self.open_bus & open_bus_mask)
+        return_value
     }
 
     fn read_palette_ram(&self, addr: u16) -> u8 {
@@ -822,10 +820,13 @@ impl PPU {
         self.w = !self.w;
     }
 
-    pub fn read_ppustatus(&mut self) -> u8 {
+    pub fn read_ppustatus(&mut self, open_bus_mask: &mut u8) -> u8 {
         self.w = false;
         self.update_status_flag();
-        self.status
+        let mut ret = self.status;
+        *open_bus_mask = 0x1f;
+        Self::process_status_reg_open_bus(open_bus_mask, &mut ret);
+        ret
     }
 
     fn update_status_flag(&mut self) {
@@ -921,5 +922,38 @@ impl PPU {
             0x3000..=0x3fff => self.read_vram(addr - 0x1000),
             _ => panic!("Invalid address {:#X}", addr),
         }
+    }
+
+    pub fn set_open_bus(&mut self, mask: u8, val: u8) {
+        let mut val = val;
+        let mut mask = mask;
+        if mask == 0xff {
+            self.open_bus = val;
+        } else {
+            let mut open_bus = (self.open_bus as u16) << 8;
+            for _i in 0..8 {
+                open_bus >>= 1;
+                if mask & 0x01 != 0 {
+                    if val & 0x01 != 0 {
+                        open_bus |= 0x80;
+                    } else {
+                        open_bus &= 0xff7f;
+                    }
+                }
+                val >>= 1;
+                mask >>= 1;
+            }
+            self.open_bus = open_bus as u8;
+        }
+    }
+
+    pub fn apply_open_bus(&mut self, mask: u8, val: u8) -> u8 {
+        self.set_open_bus(!mask, val);
+        val | self.open_bus & mask
+    }
+
+    pub fn process_status_reg_open_bus(open_bus_mask: &mut u8, return_val: &mut u8) {
+        *open_bus_mask = 0x00;
+        *return_val |= 0x1b;
     }
 }
