@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::ines_parser::Flags1Enum;
+use crate::ines_parser::{get_prg_rom_size, Flags1Enum};
 use crate::joypad::Joypad;
 use crate::mappers::mmc1::MMC1;
 use crate::{
@@ -53,10 +53,18 @@ impl<'a> Bus<'a> {
                 file.chr_rom_area,
                 file.header.flags1.get(Flags1Enum::NAME_TABLE_MIRROR),
             ))),
-            1 => Rc::new(RefCell::new(MMC1::new(
-                file.prg_rom_area,
-                file.chr_rom_area,
-            ))),
+            1 => {
+                let prg_ram_size = file.get_prg_ram_size();
+                let eeprom_size = file.get_eeprom_size();
+                let has_battery = file.header.flags1.get(Flags1Enum::BATTERY) != 0;
+                Rc::new(RefCell::new(MMC1::new(
+                    file.prg_rom_area,
+                    file.chr_rom_area,
+                    prg_ram_size,
+                    eeprom_size,
+                    has_battery,
+                )))
+            }
             _ => panic!("Unsupported mapper {}", mapper_num),
         }
     }
@@ -69,6 +77,7 @@ impl<'a> Bus<'a> {
             _ => self.mapper.borrow().read(addr),
         }
     }
+
     pub fn read_16_trace(&self, addr: u16) -> u16 {
         let low = self.read_trace(addr);
         let high = self.read_trace(addr + 1);
@@ -82,8 +91,8 @@ impl<'a> Bus<'a> {
     pub fn read(&mut self, addr: u16) -> u8 {
         match addr {
             RAM_START..=RAM_END => self.cpu_ram[(addr & 0x07FF) as usize],
-            PPU_REG_START..=PPU_REG_END => self.execute_ppu_read(addr as u16),
-            APU_IO_START..=APU_IO_END => self.execute_apu_io_read(addr as u16),
+            PPU_REG_START..=PPU_REG_END => self.execute_ppu_read(addr),
+            APU_IO_START..=APU_IO_END => self.execute_apu_io_read(addr),
             _ => self.mapper.borrow().read(addr),
         }
     }
@@ -143,10 +152,7 @@ impl<'a> Bus<'a> {
                 open_bus_mask = 0x0;
                 self.ppu.read_oamdata()
             }
-            7 => {
-                open_bus_mask = 0xc0;
-                self.ppu.read_ppudata()
-            }
+            7 => self.ppu.read_ppudata(&mut open_bus_mask),
             _ => unreachable!(),
         };
         self.ppu.apply_open_bus(open_bus_mask, ret)

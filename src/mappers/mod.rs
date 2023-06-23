@@ -18,7 +18,7 @@ pub trait Mapper {
 
     fn write(&mut self, addr: u16, data: u8);
 
-    fn write_chr_rom(&mut self, addr: u16, data: u8);
+    fn write_chr_rom(&mut self, _addr: u16, _data: u8) {}
 
     fn write_nametable_idx(&mut self, idx: usize, addr: u16, val: u8);
 

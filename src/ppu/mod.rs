@@ -714,12 +714,15 @@ impl PPU {
         }
     }
 
-    pub fn read_ppudata(&mut self) -> u8 {
+    pub fn read_ppudata(&mut self, open_bus_mask: &mut u8) -> u8 {
         let mut return_value = self.memory_read_buffer;
         self.memory_read_buffer = self.read_vram(self.ppu_bus_address & 0x3fff);
 
         if (self.ppu_bus_address & 0x3fff) >= 0x3f00 {
             return_value = self.read_palette_ram(self.ppu_bus_address) | self.open_bus & 0xc0;
+            *open_bus_mask = 0xc0;
+        } else {
+            *open_bus_mask = 0x00;
         }
 
         self.update_video_ram_addr();

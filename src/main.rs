@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use sdl2::{event::Event, keyboard::Keycode, pixels::PixelFormatEnum};
 
@@ -9,7 +10,7 @@ use nes::{bus::Bus, cpu::CPU, ines_parser::File};
 fn main() {
     // CPU Tests -----------------------------------------------------------------------------------
     // let rom = File::new("tests/cpu_dummy_writes/cpu_dummy_writes_oam.nes"); // Passes
-    // let rom = File::new("tests/cpu_dummy_writes/cpu_dummy_writes_ppumem.nes"); // Fails - expected
+    // let rom = File::new("tests/cpu_dummy_writes/cpu_dummy_writes_ppumem.nes"); // Passes
 
     // let rom = File::new("tests/cpu_exec_space/test_cpu_exec_space_apu.nes"); // Fails - expected
     // let rom = File::new("tests/cpu_exec_space/test_cpu_exec_space_ppuio.nes"); // Passes
@@ -62,7 +63,13 @@ fn main() {
     // let rom = File::new("roms/mario.nes");
     // let rom = File::new("roms/pacman.nes");
     // let rom = File::new("roms/excitebike.nes");
-    let rom = File::new("roms/zelda.nes");
+    // let rom = File::new("roms/zelda.nes");
+
+    // let rom = File::new("tests/holy-mapperel/M0_P32K_C8K_V.nes"); -- Passes
+    // let rom = File::new("tests/holy-mapperel/M0_P32K_CR8K_V.nes"); -- Passes
+    // let rom = File::new("tests/holy-mapperel/M0_P32K_CR32K_V.nes"); -- Passes
+    // let rom = File::new("tests/holy-mapperel/M1_P128K_C32K.nes"); -- Passes
+    let rom = File::new("tests/holy-mapperel/M1_P128K_C32K_S8K.nes");
 
     create(rom);
 }
@@ -145,5 +152,5 @@ fn create(rom: File) {
     ));
     cpu.enable_logging();
     cpu.reset();
-    cpu.run(1_000_000);
+    cpu.run(2409735);
 }

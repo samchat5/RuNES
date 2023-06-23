@@ -11,6 +11,7 @@ pub struct NROM {
     pub undefined_area: [u8; 0x3fe0],
     pub prg_rom: Vec<u8>,
     pub chr_rom: Vec<u8>,
+    has_chr_ram: bool,
     prg_rom_mode: PRGRomMode,
     mirroring: u8,
     nametables: [[u8; 0x400]; 2],
@@ -26,6 +27,7 @@ impl NROM {
                 PRGRomMode::PRG32k
             },
             prg_rom,
+            has_chr_ram: chr_rom.is_none(),
             chr_rom: match chr_rom {
                 Some(chr_rom) => chr_rom,
                 None => vec![0; 8192],
@@ -57,18 +59,23 @@ impl Mapper for NROM {
                 PRGRomMode::PRG16k => self.prg_rom[(addr - 0xC000) as usize],
                 PRGRomMode::PRG32k => self.prg_rom[(addr - 0x8000) as usize],
             },
-            _ => panic!("Invalid address {:#X}", addr),
+            _ => {
+                println!("Invalid address {:#X}", addr);
+                0
+            }
         }
     }
 
     fn write(&mut self, addr: u16, data: u8) {
-        if addr < 0x7FFF {
-            self.undefined_area[(addr - 0x4020) as usize] = data;
+        if (0x6000..=0x7FFF).contains(&addr) {
+            self.undefined_area[(addr - 0x6000) as usize] = data;
         }
     }
 
     fn write_chr_rom(&mut self, addr: u16, data: u8) {
-        self.chr_rom[addr as usize] = data;
+        if self.has_chr_ram {
+            self.chr_rom[addr as usize] = data;
+        }
     }
 
     fn write_nametable_idx(&mut self, idx: usize, addr: u16, val: u8) {

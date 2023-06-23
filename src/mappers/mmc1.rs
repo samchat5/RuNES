@@ -79,19 +79,35 @@ pub struct MMC1 {
     temp_reg: u8,
     shift_count: u8,
     state: State,
-    prg_ram: [u8; 0x2000],
+    prg_ram: Vec<u8>,
     prg_rom: Vec<u8>,
     chr_rom: Vec<u8>,
+    has_chr_ram: bool,
     nametables: [[u8; 0x400]; 2],
 }
 
 impl MMC1 {
-    pub fn new(prg_rom: Vec<u8>, chr_rom: Option<Vec<u8>>) -> Self {
+    pub fn new(
+        prg_rom: Vec<u8>,
+        chr_rom: Option<Vec<u8>>,
+        prg_ram_size: usize,
+        eeprom_size: usize,
+        has_battery: bool,
+    ) -> Self {
+        let mut prg_ram_size = prg_ram_size;
+        if prg_ram_size == 0 && eeprom_size > 0 {
+            prg_ram_size = eeprom_size;
+        } else if has_battery {
+            prg_ram_size = 0x2000;
+        }
+        let has_chr_ram = chr_rom.is_none();
+
         Self {
-            prg_ram: [0; 0x2000],
+            prg_ram: vec![0; prg_ram_size],
             prg_rom,
             chr_rom: chr_rom.unwrap_or_else(|| vec![0; 0x2000]),
             temp_reg: 0,
+            has_chr_ram,
             shift_count: 0,
             state: State::default(),
             nametables: [[0; 0x400]; 2],
@@ -179,16 +195,19 @@ impl Mapper for MMC1 {
         match self.get_chr_mode() {
             CHRMode::CHR8k => {
                 let page = (self.state.chr_bank_0_reg >> 1) as usize;
-                self.chr_rom[(page * 8192) + addr as usize]
+                let idx = (page * 8192) + addr as usize;
+                self.chr_rom[idx % self.chr_rom.len()]
             }
             CHRMode::CHR4k => match addr {
                 0x0000..=0x0FFF => {
                     let page = self.state.chr_bank_0_reg as usize;
-                    self.chr_rom[(page * 4096) + addr as usize]
+                    let idx = (page * 4096) + addr as usize;
+                    self.chr_rom[idx % self.chr_rom.len()]
                 }
                 0x1000..=0x1FFF => {
                     let page = self.state.chr_bank_1_reg as usize;
-                    self.chr_rom[(page * 4096) + (addr - 0x1000) as usize]
+                    let idx = (page * 4096) + (addr - 0x1000) as usize;
+                    self.chr_rom[idx % self.chr_rom.len()]
                 }
                 _ => panic!("Invalid CHR read addr {:#X}", addr),
             },
@@ -199,41 +218,51 @@ impl Mapper for MMC1 {
         if !self.get_wram_disable() {
             self.read_trace(addr)
         } else {
-            panic!("WRAM disabled, cannot read from PRG");
+            println!("WRAM disabled, cannot read from PRG");
+            0
         }
     }
 
     fn write(&mut self, addr: u16, data: u8) {
         if !self.get_wram_disable() {
             match addr {
-                0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize] = data,
+                0x6000..=0x7FFF => {
+                    if !self.prg_ram.is_empty() {
+                        let idx = ((addr - 0x6000) as usize) % self.prg_ram.len();
+                        self.prg_ram[idx] = data;
+                    } else {
+                        println!("Attempted to write to non-existent PRG RAM");
+                    }
+                }
                 0x8000..=0x9FFF => self.write_reg(data, Register::Control),
                 0xA000..=0xBFFF => self.write_reg(data, Register::CHRBank0),
                 0xC000..=0xDFFF => self.write_reg(data, Register::CHRBank1),
                 0xE000..=0xFFFF => self.write_reg(data, Register::PRGBank),
-                _ => panic!("Invalid write address: {:#X}", addr),
+                _ => println!("Invalid write address: {:#X}", addr),
             }
         }
         // todo!("Implement consecutive write logic for MMC1");
     }
 
     fn write_chr_rom(&mut self, addr: u16, data: u8) {
-        match self.get_chr_mode() {
-            CHRMode::CHR8k => {
-                let page = (self.state.chr_bank_0_reg >> 1) as usize;
-                self.chr_rom[(page * 8192) + addr as usize] = data;
+        if self.has_chr_ram {
+            match self.get_chr_mode() {
+                CHRMode::CHR8k => {
+                    let page = (self.state.chr_bank_0_reg >> 1) as usize;
+                    self.chr_rom[(page * 8192) + addr as usize] = data;
+                }
+                CHRMode::CHR4k => match addr {
+                    0x0000..=0x0FFF => {
+                        let page = self.state.chr_bank_0_reg as usize;
+                        self.chr_rom[(page * 4096) + addr as usize] = data;
+                    }
+                    0x1000..=0x1FFF => {
+                        let page = self.state.chr_bank_1_reg as usize;
+                        self.chr_rom[(page * 4096) + (addr - 0x1000) as usize] = data;
+                    }
+                    _ => panic!("Invalid CHR read addr {:#X}", addr),
+                },
             }
-            CHRMode::CHR4k => match addr {
-                0x0000..=0x0FFF => {
-                    let page = self.state.chr_bank_0_reg as usize;
-                    self.chr_rom[(page * 4096) + addr as usize] = data;
-                }
-                0x1000..=0x1FFF => {
-                    let page = self.state.chr_bank_1_reg as usize;
-                    self.chr_rom[(page * 4096) + (addr - 0x1000) as usize] = data;
-                }
-                _ => panic!("Invalid CHR read addr {:#X}", addr),
-            },
         }
     }
 
@@ -247,21 +276,36 @@ impl Mapper for MMC1 {
 
     fn read_trace(&self, addr: u16) -> u8 {
         if (0x6000..=0x7FFF).contains(&addr) {
-            self.prg_ram[(addr - 0x6000) as usize]
+            if !self.prg_ram.is_empty() {
+                let idx = (addr - 0x6000) as usize;
+                self.prg_ram[idx % self.prg_ram.len()]
+            } else {
+                println!("Attempted to read from PRG RAM, but it is not mapped");
+                0
+            }
         } else {
             match self.get_prg_mode() {
                 PRGMode::PRG32k => {
-                    let page = self.get_prg_bank() >> 1;
+                    let mut page = self.get_prg_bank() >> 1;
+                    if page >= self.get_page_cnt() {
+                        page &= self.get_page_cnt() - 1;
+                    }
                     self.prg_rom[(page * 32768) + (addr - 0x8000) as usize]
                 }
                 _ => {
-                    let (page, offset): (usize, usize) = match (self.get_slot_select(), addr) {
+                    let (mut page, offset): (usize, usize) = match (self.get_slot_select(), addr) {
                         (SlotSelect::Slot0, 0x8000..=0xBFFF) => (0, 0x8000),
                         (SlotSelect::Slot0, 0xC000..=0xFFFF) => (self.get_prg_bank(), 0xC000),
                         (_, 0x8000..=0xBFFF) => (self.get_prg_bank(), 0x8000),
                         (_, 0xC000..=0xFFFF) => (0x0F & (self.get_page_cnt() - 1), 0xC000),
-                        _ => panic!("Invalid read address: {:#X}", addr),
+                        _ => {
+                            println!("Invalid read address: {:#X}", addr);
+                            return 0;
+                        }
                     };
+                    if page >= self.get_page_cnt() {
+                        page &= self.get_page_cnt() - 1;
+                    }
                     self.prg_rom[(page * 16384) + addr as usize - offset]
                 }
             }

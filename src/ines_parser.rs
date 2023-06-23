@@ -196,7 +196,7 @@ pub struct Header {
     _flags2: Flags2,
     _mapper_msb: MapperMSB,
     rom_size_msb: ROMSizeMSB,
-    _prg_ram_eeprom_size: PRGRAMEEPROMSize,
+    prg_ram_eeprom_size: PRGRAMEEPROMSize,
     _chr_ram_size: CHRRAMSize,
     _timing: Timing,
     _console_type: ConsoleType,
@@ -216,7 +216,7 @@ impl Header {
             _flags2: Flags2(bytes[7]),
             _mapper_msb: MapperMSB(bytes[8]),
             rom_size_msb: ROMSizeMSB(bytes[9]),
-            _prg_ram_eeprom_size: PRGRAMEEPROMSize(bytes[10]),
+            prg_ram_eeprom_size: PRGRAMEEPROMSize(bytes[10]),
             _chr_ram_size: CHRRAMSize(bytes[11]),
             _timing: Timing(bytes[12]),
             _console_type: match bytes[7] & 0x03 {
@@ -307,5 +307,27 @@ impl File {
             chr_rom_area,
             misc_rom_area,
         }
+    }
+
+    pub fn get_prg_ram_size(&self) -> usize {
+        let shift_count = self
+            .header
+            .prg_ram_eeprom_size
+            .get(PRGRAMEEPROMSizeEnum::PRG_RAM_SIZE);
+        if shift_count == 0 {
+            return 0;
+        }
+        64 << shift_count
+    }
+
+    pub fn get_eeprom_size(&self) -> usize {
+        let shift_count = self
+            .header
+            .prg_ram_eeprom_size
+            .get(PRGRAMEEPROMSizeEnum::EEPROM_SIZE);
+        if shift_count == 0 {
+            return 0;
+        }
+        64 << shift_count
     }
 }
