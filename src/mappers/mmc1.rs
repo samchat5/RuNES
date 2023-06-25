@@ -215,16 +215,18 @@ impl Mapper for MMC1 {
     }
 
     fn read(&self, addr: u16) -> u8 {
-        if !self.get_wram_disable() {
-            self.read_trace(addr)
-        } else {
+        if self.get_wram_disable() && (0x6000..=0x7fff).contains(&addr) {
             println!("WRAM disabled, cannot read from PRG");
             0
+        } else {
+            self.read_trace(addr)
         }
     }
 
     fn write(&mut self, addr: u16, data: u8) {
-        if !self.get_wram_disable() {
+        if self.get_wram_disable() && (0x6000..=0x7fff).contains(&addr) {
+            println!("WRAM disabled, cannot write to PRG");
+        } else {
             match addr {
                 0x6000..=0x7FFF => {
                     if !self.prg_ram.is_empty() {

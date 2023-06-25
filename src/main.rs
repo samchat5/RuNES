@@ -65,11 +65,15 @@ fn main() {
     // let rom = File::new("roms/excitebike.nes");
     // let rom = File::new("roms/zelda.nes");
 
-    // let rom = File::new("tests/holy-mapperel/M0_P32K_C8K_V.nes"); -- Passes
-    // let rom = File::new("tests/holy-mapperel/M0_P32K_CR8K_V.nes"); -- Passes
-    // let rom = File::new("tests/holy-mapperel/M0_P32K_CR32K_V.nes"); -- Passes
-    // let rom = File::new("tests/holy-mapperel/M1_P128K_C32K.nes"); -- Passes
-    let rom = File::new("tests/holy-mapperel/M1_P128K_C32K_S8K.nes");
+    // let rom = File::new("tests/holy-mapperel/M0_P32K_C8K_V.nes"); // Passes
+    // let rom = File::new("tests/holy-mapperel/M0_P32K_CR8K_V.nes"); // Passes
+    // let rom = File::new("tests/holy-mapperel/M0_P32K_CR32K_V.nes"); // Passes
+    // let rom = File::new("tests/holy-mapperel/M1_P128K_C32K.nes"); // Passes
+    // let rom = File::new("tests/holy-mapperel/M1_P128K_C32K_S8K.nes"); // Passes
+    // let rom = File::new("tests/holy-mapperel/M1_P128K_C32K_W8K.nes"); // Passes
+    let rom = File::new("tests/holy-mapperel/M1_P128K_C128K.nes"); // Passes
+                                                                   // let rom = File::new("tests/holy-mapperel/M1_P128K_C128K_S8K.nes"); // Passes
+                                                                   // let rom = File::new("tests/holy-mapperel/M1_P128K_C128K_W8K.nes"); // Passes
 
     create(rom);
 }
@@ -150,7 +154,7 @@ fn create(rom: File) {
             .open("log.log")
             .unwrap(),
     ));
-    cpu.enable_logging();
+    // cpu.enable_logging();
     cpu.reset();
-    cpu.run(2409735);
+    cpu.run(u64::MAX);
 }
