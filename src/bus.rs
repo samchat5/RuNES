@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::ines_parser::{get_prg_rom_size, Flags1Enum};
+use crate::ines_parser::Flags1Enum;
 use crate::joypad::Joypad;
 use crate::mappers::mmc1::MMC1;
 use crate::{
@@ -47,24 +47,25 @@ impl<'a> Bus<'a> {
 
     fn get_mapper_from_num(file: File) -> Rc<RefCell<dyn Mapper>> {
         let mapper_num = file.header.flags1.get(Flags1Enum::MAPPER_NUM);
+        let prg_ram_size = file.get_prg_ram_size();
+        let eeprom_size = file.get_eeprom_size();
+        let has_battery = file.header.flags1.get(Flags1Enum::BATTERY) != 0;
         match mapper_num {
             0 => Rc::new(RefCell::new(NROM::new(
                 file.prg_rom_area,
                 file.chr_rom_area,
+                prg_ram_size,
+                eeprom_size,
+                has_battery,
                 file.header.flags1.get(Flags1Enum::NAME_TABLE_MIRROR),
             ))),
-            1 => {
-                let prg_ram_size = file.get_prg_ram_size();
-                let eeprom_size = file.get_eeprom_size();
-                let has_battery = file.header.flags1.get(Flags1Enum::BATTERY) != 0;
-                Rc::new(RefCell::new(MMC1::new(
-                    file.prg_rom_area,
-                    file.chr_rom_area,
-                    prg_ram_size,
-                    eeprom_size,
-                    has_battery,
-                )))
-            }
+            1 => Rc::new(RefCell::new(MMC1::new(
+                file.prg_rom_area,
+                file.chr_rom_area,
+                prg_ram_size,
+                eeprom_size,
+                has_battery,
+            ))),
             _ => panic!("Unsupported mapper {}", mapper_num),
         }
     }
@@ -106,8 +107,8 @@ impl<'a> Bus<'a> {
     pub fn write(&mut self, addr: u16, data: u8) {
         match addr {
             RAM_START..=RAM_END => self.cpu_ram[(addr & 0x07FF) as usize] = data,
-            PPU_REG_START..=PPU_REG_END => self.execute_ppu_write(addr as u16, data),
-            APU_IO_START..=APU_IO_END => self.execute_apu_io_write(addr as u16, data),
+            PPU_REG_START..=PPU_REG_END => self.execute_ppu_write(addr, data),
+            APU_IO_START..=APU_IO_END => self.execute_apu_io_write(addr, data),
             _ => self.mapper.borrow_mut().write(addr, data),
         }
     }

@@ -242,13 +242,12 @@ pub fn get_prg_rom_size(header: Header) -> usize {
 }
 
 pub fn get_chr_rom_size(header: Header) -> usize {
+    let msb = header.rom_size_msb.get(ROMSizeMSBEnum::CHR) as usize;
+    let lsb = header.chr_rom_size_lsb as usize;
     if header.rom_size_msb.get(ROMSizeMSBEnum::CHR) == 0xF {
-        (2_u32.pow((header.chr_rom_size_lsb & 0xFC) as u32)
-            * ((header.chr_rom_size_lsb & 0x03) * 2 + 1) as u32) as usize
+        (2_u32.pow((lsb & 0xFC) as u32) * ((msb & 0x03) * 2 + 1) as u32) as usize
     } else {
-        ((header.chr_rom_size_lsb as u16
-            | ((header.rom_size_msb.get(ROMSizeMSBEnum::CHR) as u16) << 8))
-            * 8192) as usize
+        (lsb | (msb << 8)) * 8192
     }
 }
 

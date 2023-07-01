@@ -251,7 +251,9 @@ impl Mapper for MMC1 {
             match self.get_chr_mode() {
                 CHRMode::CHR8k => {
                     let page = (self.state.chr_bank_0_reg >> 1) as usize;
-                    self.chr_rom[(page * 8192) + addr as usize] = data;
+                    let idx = page * 8192 + addr as usize;
+                    let len = self.chr_rom.len();
+                    self.chr_rom[idx % len] = data;
                 }
                 CHRMode::CHR4k => match addr {
                     0x0000..=0x0FFF => {

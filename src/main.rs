@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::time::Duration;
 
 use sdl2::{event::Event, keyboard::Keycode, pixels::PixelFormatEnum};
 
@@ -8,72 +7,13 @@ use nes::ppu::PPU;
 use nes::{bus::Bus, cpu::CPU, ines_parser::File};
 
 fn main() {
-    // CPU Tests -----------------------------------------------------------------------------------
-    // let rom = File::new("tests/cpu_dummy_writes/cpu_dummy_writes_oam.nes"); // Passes
-    // let rom = File::new("tests/cpu_dummy_writes/cpu_dummy_writes_ppumem.nes"); // Passes
-
-    // let rom = File::new("tests/cpu_exec_space/test_cpu_exec_space_apu.nes"); // Fails - expected
-    // let rom = File::new("tests/cpu_exec_space/test_cpu_exec_space_ppuio.nes"); // Passes
-
-    // let rom = File::new("tests/cpu_interrupts_v2/cpu_interrupts.nes"); // Fails - expected
-
-    // let rom = File::new("tests/cpu_timing_test6/cpu_timing_test.nes"); // Passes
-
-    // let rom = File::new("tests/instr_misc/instr_misc.nes"); // Fails - expected
-
-    // let rom = File::new("tests/instr_test-v5/all_instrs.nes"); // Passes
-    // let rom = File::new("tests/instr_test-v5/official_only.nes"); // Passes
-
-    // let rom = File::new("tests/instr_timing/instr_timing.nes"); // Fails - expected
-
-    // let rom = File::new("tests/nestest/nestest.nes"); // Passes
-
-    // PPU Tests -----------------------------------------------------------------------------------
-    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/palette_ram.nes"); // Fails - expected
-    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/power_up_palette.nes"); // Passes
-    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/sprite_ram.nes"); // Passes
-    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/vbl_clear_time.nes"); // Passes
-    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/vram_access.nes"); // Passes
-
-    // let rom = File::new("tests/stress/NEStress.NES"); // ??
-
-    // let rom = File::new("tests/scrolltest/scroll.nes"); // Passes
-
-    // let rom = File::new("tests/scanline-a1/scanline.nes"); // Passes
-
-    // let rom = File::new("tests/ppu_vbl_nmi/ppu_vbl_nmi.nes"); // Passes
-
-    // let rom = File::new("tests/window5/colorwin_ntsc.nes"); // Passes
-
-    // let rom = File::new("tests/spritecans-2011/spritecans.nes"); // Passes
-
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/01.basics.nes"); // Passes
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/02.alignment.nes"); // Passes
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/03.corners.nes"); // Passes
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/04.flip.nes"); // Passes
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/05.left_clip.nes"); // Passes
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/06.right_edge.nes"); // Passes
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/07.screen_bottom.nes"); // Passes
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/08.double_height.nes"); // Passes
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/09.timing_basics.nes"); // Passes
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/10.timing_order.nes"); // Passes
-    // let rom = File::new("tests/sprite_hit_tests_2005.10.05/11.edge_timing.nes"); // Passes
-
     // Game ROMS -----------------------------------------------------------------------------------
     // let rom = File::new("roms/mario.nes");
     // let rom = File::new("roms/pacman.nes");
     // let rom = File::new("roms/excitebike.nes");
     // let rom = File::new("roms/zelda.nes");
 
-    // let rom = File::new("tests/holy-mapperel/M0_P32K_C8K_V.nes"); // Passes
-    // let rom = File::new("tests/holy-mapperel/M0_P32K_CR8K_V.nes"); // Passes
-    // let rom = File::new("tests/holy-mapperel/M0_P32K_CR32K_V.nes"); // Passes
-    // let rom = File::new("tests/holy-mapperel/M1_P128K_C32K.nes"); // Passes
-    // let rom = File::new("tests/holy-mapperel/M1_P128K_C32K_S8K.nes"); // Passes
-    // let rom = File::new("tests/holy-mapperel/M1_P128K_C32K_W8K.nes"); // Passes
-    let rom = File::new("tests/holy-mapperel/M1_P128K_C128K.nes"); // Passes
-                                                                   // let rom = File::new("tests/holy-mapperel/M1_P128K_C128K_S8K.nes"); // Passes
-                                                                   // let rom = File::new("tests/holy-mapperel/M1_P128K_C128K_W8K.nes"); // Passes
+    let rom = File::new("tests/ppu_open_bus/ppu_open_bus.nes");
 
     create(rom);
 }

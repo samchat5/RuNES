@@ -1,4 +1,6 @@
 use sdl2::pixels::Color;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Frame {
@@ -25,5 +27,11 @@ impl Frame {
         self.image[index] = color.r;
         self.image[index + 1] = color.g;
         self.image[index + 2] = color.b;
+    }
+
+    pub fn get_hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.image.hash(&mut hasher);
+        hasher.finish()
     }
 }

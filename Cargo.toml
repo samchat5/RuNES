@@ -17,4 +17,7 @@ sdl2 = "0.35.2"
 itertools = "0.10.5"
 
 [profile.dev]
-debug = true
+opt-level = 3
+
+[profile.test]
+opt-level = 3

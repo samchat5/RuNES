@@ -8,7 +8,7 @@ enum PRGRomMode {
 
 #[derive(Clone)]
 pub struct NROM {
-    pub undefined_area: [u8; 0x3fe0],
+    pub prg_ram: Vec<u8>,
     pub prg_rom: Vec<u8>,
     pub chr_rom: Vec<u8>,
     has_chr_ram: bool,
@@ -18,9 +18,23 @@ pub struct NROM {
 }
 
 impl NROM {
-    pub fn new(prg_rom: Vec<u8>, chr_rom: Option<Vec<u8>>, mirroring: u8) -> Self {
+    pub fn new(
+        prg_rom: Vec<u8>,
+        chr_rom: Option<Vec<u8>>,
+        prg_ram_size: usize,
+        eeprom_size: usize,
+        has_battery: bool,
+        mirroring: u8,
+    ) -> Self {
+        let mut prg_ram_size = prg_ram_size;
+        if prg_ram_size == 0 && eeprom_size > 0 {
+            prg_ram_size = eeprom_size;
+        } else if has_battery {
+            prg_ram_size = 0x2000;
+        }
+
         Self {
-            undefined_area: [0; 0x3fe0],
+            prg_ram: vec![0; prg_ram_size],
             prg_rom_mode: if prg_rom.len() <= 16384 {
                 PRGRomMode::PRG16k
             } else {
@@ -53,7 +67,17 @@ impl Mapper for NROM {
 
     fn read(&self, addr: u16) -> u8 {
         match addr {
-            0x6000..=0x7FFF => self.undefined_area[(addr - 0x6000) as usize],
+            0x6000..=0x7FFF => {
+                if !self.prg_ram.is_empty() {
+                    self.prg_ram[(addr - 0x6000) as usize]
+                } else {
+                    println!(
+                        "Attempted to read from PRG RAM at {:#X} but no PRG RAM is present",
+                        addr
+                    );
+                    0
+                }
+            }
             0x8000..=0xBFFF => self.prg_rom[(addr - 0x8000) as usize],
             0xC000..=0xFFFF => match self.prg_rom_mode {
                 PRGRomMode::PRG16k => self.prg_rom[(addr - 0xC000) as usize],
@@ -68,7 +92,14 @@ impl Mapper for NROM {
 
     fn write(&mut self, addr: u16, data: u8) {
         if (0x6000..=0x7FFF).contains(&addr) {
-            self.undefined_area[(addr - 0x6000) as usize] = data;
+            if !self.prg_ram.is_empty() {
+                self.prg_ram[(addr - 0x6000) as usize] = data;
+            } else {
+                println!(
+                    "Attempted to write to PRG RAM at {:#X} but no PRG RAM is present",
+                    addr
+                );
+            }
         }
     }
 

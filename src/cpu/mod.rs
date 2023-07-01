@@ -540,6 +540,10 @@ impl CPU<'_> {
         }
     }
 
+    pub fn get_frame_hash(&self) -> u64 {
+        self.bus.borrow().ppu.curr_frame.get_hash()
+    }
+
     pub fn run(&mut self, cycles: u64) {
         while self.cycle_count < cycles {
             self.log();
