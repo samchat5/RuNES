@@ -1,10 +1,19 @@
+use lazy_static::lazy_static;
 use std::collections::HashMap;
 
 use sdl2::{event::Event, keyboard::Keycode, pixels::PixelFormatEnum};
 
+use config::Config;
 use nes::joypad::{Buttons, Joypad};
 use nes::ppu::PPU;
 use nes::{bus::Bus, cpu::CPU, ines_parser::File};
+
+lazy_static! {
+    static ref CONFIG: Config = Config::builder()
+        .add_source(config::File::with_name("config"))
+        .build()
+        .unwrap();
+}
 
 fn main() {
     // Game ROMS -----------------------------------------------------------------------------------
@@ -86,15 +95,25 @@ fn create(rom: File) {
 
     let mut cpu = CPU::new(bus);
 
-    cpu.set_sink(Box::new(
-        std::fs::File::options()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open("log.log")
-            .unwrap(),
-    ));
-    // cpu.enable_logging();
+    if CONFIG.get_bool("enable_logging").unwrap_or(false) {
+        cpu.set_sink(Box::new(
+            std::fs::File::options()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(
+                    CONFIG
+                        .get_string("logging_path")
+                        .unwrap_or_else(|_| "log.log".to_string()),
+                )
+                .unwrap(),
+        ));
+        cpu.enable_logging();
+    }
     cpu.reset();
-    cpu.run(u64::MAX);
+    cpu.run(
+        CONFIG
+            .get_int("run_cycles")
+            .map_or_else(|_| u64::MAX, |x| x as u64),
+    );
 }

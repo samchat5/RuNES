@@ -1,0 +1,2 @@
+enable_logging = true
+logging_path = "log.log"
