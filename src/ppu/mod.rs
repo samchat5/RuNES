@@ -860,6 +860,7 @@ impl PPU {
         match addr {
             0x0000..=0x1fff => self.mapper.borrow_mut().write_chr_rom(addr, val),
             0x2000..=0x3eff => self.mapper.borrow_mut().write_nametable(addr, val),
+            0x3f00..=0x3fff => self.write_palette_ram(addr, val),
             _ => panic!("Invalid address {:#X}", addr),
         }
     }
@@ -922,7 +923,7 @@ impl PPU {
         match addr {
             0x0000..=0x1fff => self.mapper.borrow().read_chr_rom(addr),
             0x2000..=0x2fff => self.mapper.borrow().read_nametable(addr),
-            0x3000..=0x3fff => self.read_vram(addr - 0x1000),
+            0x3000..=0x3fff => self.mapper.borrow().read_nametable(addr - 0x1000),
             _ => panic!("Invalid address {:#X}", addr),
         }
     }

@@ -30,10 +30,13 @@ mod tests {
         cpu_timing_tests: ("tests/cpu_timing_test6/cpu_timing_test.nes", 19081943, 11550658946518422994);
 
         // PPU TESTS -------------------------------------------------------------------------------
+        palette_ram: ("tests/blargg_ppu_tests_2005.09.15b/palette_ram.nes", 536059, 1118392138081082278);
         sprite_ram: ("tests/blargg_ppu_tests_2005.09.15b/sprite_ram.nes", 980083, 3301376315147960416);
         vbl_clear_time: ("tests/blargg_ppu_tests_2005.09.15b/vbl_clear_time.nes", 1129709, 3301376315147960416);
         vram_access: ("tests/blargg_ppu_tests_2005.09.15b/vram_access.nes", 1010586, 3301376315147960416);
         ppu_vbl_nmi: ("tests/ppu_vbl_nmi/ppu_vbl_nmi.nes", 48063788, 1118392138081082278);
+        ppu_read_buffer: ("tests/ppu_read_buffer/test_ppu_read_buffer.nes", 37818794, 10957719060148031592);
+        oam_stress: ("tests/oam_stress/oam_stress.nes", 50862880, 60536158850127617);
 
         sprite_hit_basics: ("tests/sprite_hit_tests_2005.10.05/01.basics.nes", 1365210, 4669044134520954011);
         sprite_hit_alignment: ("tests/sprite_hit_tests_2005.10.05/02.alignment.nes", 1305652, 4554223117083026616);
@@ -71,7 +74,6 @@ mod tests {
     // let rom = File::new("tests/nestest/nestest.nes"); // Passes
 
     // PPU Tests -----------------------------------------------------------------------------------
-    // let rom = File::new("tests/blargg_ppu_tests_2005.09.15b/palette_ram.nes"); // Fails - expected
     // let rom = File::new("tests/stress/NEStress.NES"); // ??
     // let rom = File::new("tests/scrolltest/scroll.nes"); // Passes
     // let rom = File::new("tests/scanline-a1/scanline.nes"); // Passes

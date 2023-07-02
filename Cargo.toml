@@ -18,7 +18,7 @@ itertools = "0.10.5"
 config = "0.13.3"
 
 [profile.dev]
-opt-level = 3
+opt-level = 0
 
 [profile.test]
 opt-level = 3

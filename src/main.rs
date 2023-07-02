@@ -20,11 +20,9 @@ fn main() {
     // let rom = File::new("roms/mario.nes");
     // let rom = File::new("roms/pacman.nes");
     // let rom = File::new("roms/excitebike.nes");
-    // let rom = File::new("roms/zelda.nes");
+    let rom = File::new("roms/zelda.nes");
 
-    // let rom = File::new("tests/ppu_open_bus/ppu_open_bus.nes");
-    // let rom = File::new("tests/ppu_read_buffer/test_ppu_read_buffer.nes");
-    let rom = File::new("tests/holy-mapperel/M3_P32K_C32K_H.nes");
+    // let rom = File::new("tests/nmi_sync/demo_ntsc.nes");
 
     create(rom);
 }
@@ -118,5 +116,6 @@ fn create(rom: File) {
             .get_int("run_cycles")
             .map_or_else(|_| u64::MAX, |x| x as u64),
     );
+    std::thread::sleep(std::time::Duration::from_secs(2));
     println!("{}", cpu.get_frame_hash())
 }
