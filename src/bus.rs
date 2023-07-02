@@ -2,10 +2,9 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::ines_parser::Flags1Enum;
 use crate::joypad::Joypad;
-use crate::mappers::mmc1::MMC1;
 use crate::{
     ines_parser::File,
-    mappers::{nrom::NROM, Mapper},
+    mappers::{cnrom::CNROM, mmc1::MMC1, nrom::NROM, Mapper},
     ppu::PPU,
 };
 
@@ -65,6 +64,14 @@ impl<'a> Bus<'a> {
                 prg_ram_size,
                 eeprom_size,
                 has_battery,
+            ))),
+            3 => Rc::new(RefCell::new(CNROM::new(
+                file.prg_rom_area,
+                file.chr_rom_area,
+                prg_ram_size,
+                eeprom_size,
+                has_battery,
+                file.header.flags1.get(Flags1Enum::NAME_TABLE_MIRROR),
             ))),
             _ => panic!("Unsupported mapper {}", mapper_num),
         }

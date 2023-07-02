@@ -55,12 +55,12 @@ mod tests {
         m1_p128k_c32k : ("tests/holy-mapperel/M1_P128K_C32K.nes", 178691, 14594562825770316186);
         m1_p128k_c32k_s8k : ("tests/holy-mapperel/M1_P128K_C32K_S8K.nes", 2431048, 6707839051576774982);
         m1_p128k_c32k_w8k : ("tests/holy-mapperel/M1_P128K_C32K_W8K.nes", 2431048, 6707839051576774982);
-
         m1_p128k_c128k : ("tests/holy-mapperel/M1_P128K_C32K.nes", 178691, 14594562825770316186);
         m1_p128k_c128k_s8k : ("tests/holy-mapperel/M1_P128K_C128K_S8K.nes", 2442022, 17191105395120435064);
         m1_p128k_c128k_w8k : ("tests/holy-mapperel/M1_P128K_C128K_W8K.nes", 2449514, 2543050301529417715);
-
         m1_p128k_cr8k: ("tests/holy-mapperel/M1_P128K_CR8K.nes", 2293119, 3560412538058700980);
+
+        m3_p32k_c32k_h : ("tests/holy-mapperel/M3_P32K_C32K_H.nes", 148911, 7333994192358773729);
     }
 
     // CPU Tests -----------------------------------------------------------------------------------
