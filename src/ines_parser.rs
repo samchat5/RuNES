@@ -251,7 +251,7 @@ pub fn get_chr_rom_size(header: Header) -> usize {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct File {
     // Header
     pub header: Header,

@@ -24,12 +24,12 @@ pub struct Bus<'a> {
     apu_io: [u8; APU_IO_SIZE],
     pub ppu: PPU,
     joypad: Joypad,
-    pub mapper: Rc<RefCell<dyn Mapper>>,
-    pub callback: CallbackType<'a>,
+    mapper: Rc<RefCell<dyn Mapper>>,
+    callback: CallbackType<'a>,
 }
 
 impl<'a> Bus<'a> {
-    pub fn new<F>(file: File, callback: F) -> Bus<'a>
+    pub fn new<F>(file: &'a File, callback: F) -> Bus<'a>
     where
         F: FnMut(&mut PPU, &mut Joypad) + 'a,
     {
@@ -44,30 +44,33 @@ impl<'a> Bus<'a> {
         }
     }
 
-    fn get_mapper_from_num(file: File) -> Rc<RefCell<dyn Mapper>> {
+    fn get_mapper_from_num(file: &File) -> Rc<RefCell<dyn Mapper>> {
         let mapper_num = file.header.flags1.get(Flags1Enum::MAPPER_NUM);
         let prg_ram_size = file.get_prg_ram_size();
         let eeprom_size = file.get_eeprom_size();
         let has_battery = file.header.flags1.get(Flags1Enum::BATTERY) != 0;
+        let prg_rom_area = file.prg_rom_area.clone();
+        let chr_rom_area = file.chr_rom_area.clone();
+
         match mapper_num {
             0 => Rc::new(RefCell::new(NROM::new(
-                file.prg_rom_area,
-                file.chr_rom_area,
+                prg_rom_area,
+                chr_rom_area,
                 prg_ram_size,
                 eeprom_size,
                 has_battery,
                 file.header.flags1.get(Flags1Enum::NAME_TABLE_MIRROR),
             ))),
             1 => Rc::new(RefCell::new(MMC1::new(
-                file.prg_rom_area,
-                file.chr_rom_area,
+                prg_rom_area,
+                chr_rom_area,
                 prg_ram_size,
                 eeprom_size,
                 has_battery,
             ))),
             3 => Rc::new(RefCell::new(CNROM::new(
-                file.prg_rom_area,
-                file.chr_rom_area,
+                prg_rom_area,
+                chr_rom_area,
                 prg_ram_size,
                 eeprom_size,
                 has_battery,

@@ -5,7 +5,7 @@ macro_rules! integration_tests {
             fn $name() {
                 let (file, cycles, hash) = $value;
                 let rom = File::new(file);
-                let bus = Bus::new(rom, |_, _| {});
+                let bus = Bus::new(&rom, |_, _| {});
                 let mut cpu = CPU::new(bus);
                 cpu.reset();
                 cpu.run(cycles);
