@@ -129,6 +129,8 @@ impl<'a> Bus<'a> {
         let mapper_addr = (addr - APU_IO_START) % 0x1F;
         match mapper_addr {
             0x16 => self.joypad.read(),
+            // Controller 2 data disabled -- always return 0
+            0x17 => 0,
             0..=0x1f => self.apu_io[mapper_addr as usize],
             _ => unreachable!(),
         }

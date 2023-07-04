@@ -21,3 +21,6 @@ rust-project.json
 
 ### Logging
 *.log
+
+### Misc
+*.mlb
