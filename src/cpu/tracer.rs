@@ -76,10 +76,7 @@ impl Loggable for CPU<'_> {
                         | AddressingMode::Accumulator
                         | AddressingMode::Relative
                         | AddressingMode::Indirect => {
-                            format!(
-                                "${:04x}",
-                                (begin as u16 + 2).wrapping_add((address as i8) as u16)
-                            )
+                            format!("${:04x}", (begin + 2).wrapping_add((address as i8) as u16))
                         }
                         _ => panic!(
                             "Unexpected addressing mode: {:?} for opcode: {:?}",

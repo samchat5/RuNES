@@ -81,7 +81,7 @@ pub struct CPU<'a> {
     // Status flags
     pub status: Status,
 
-    pub bus: Rc<RefCell<Bus<'a>>>,
+    pub bus: Rc<RefCell<Bus>>,
 
     // Logger
     pub sink: Box<dyn Write + Send>,
@@ -106,10 +106,12 @@ pub struct CPU<'a> {
     sprite_dma_transfer: bool,
     need_dummy_read: bool,
     sprite_dma_offset: u8,
+
+    phantom: std::marker::PhantomData<&'a ()>,
 }
 
 impl CPU<'_> {
-    pub fn new(bus: Bus) -> CPU {
+    pub fn new(bus: Bus) -> Self {
         CPU {
             x: 0,
             y: 0,
@@ -138,6 +140,7 @@ impl CPU<'_> {
             sprite_dma_transfer: false,
             need_dummy_read: false,
             sprite_dma_offset: 0,
+            phantom: std::marker::PhantomData,
         }
     }
 
@@ -167,7 +170,7 @@ impl CPU<'_> {
     }
 
     fn write(&mut self, addr: u16, val: u8) {
-        self.bus.borrow_mut().write(addr, val);
+        self.bus.borrow_mut().write(addr, val, self.cycle_count);
     }
 
     fn run_to(&mut self, cyc: u64) {
@@ -503,6 +506,10 @@ impl CPU<'_> {
         } as u64;
         self.cycle_count = self.cycle_count.wrapping_add(1);
         self.run_to(self.master_clock - self.ppu_offset as u64);
+        self.bus.borrow_mut().apu.clock();
+        // if self.bus.borrow_mut().apu.clock() {
+        //     self.irq_flag = true;
+        // }
     }
 
     fn end_cpu_cycle(&mut self, is_read: bool) {
@@ -544,101 +551,112 @@ impl CPU<'_> {
         self.bus.borrow().ppu.curr_frame.get_hash()
     }
 
-    pub fn run(&mut self, cycles: u64) {
+    pub fn run_for_cycles(&mut self, cycles: u64) {
         while self.cycle_count < cycles {
-            self.log();
-            let opcode = self.get_op_code();
+            self.run();
+        }
+    }
 
-            let searched_op = OPS.binary_search_by_key(&opcode, |op| op.hex);
-            let op = if searched_op.is_err() {
-                println!("Invalid opcode: {:02X}", opcode);
-                &OPS[OPS
-                    .binary_search_by_key(&&*"NOP".to_string(), |op| op.name)
-                    .unwrap()]
-            } else {
-                &OPS[OPS.binary_search_by_key(&opcode, |op| op.hex).unwrap()]
-            };
-            self.instr_addr_mode = op.addressing_mode;
-            self.operand = self.fetch_operand();
+    pub fn run_until_frame(&mut self) {
+        let frame_num = self.bus.borrow().ppu.frame_count;
+        while self.bus.borrow().ppu.frame_count == frame_num {
+            self.run();
+        }
+    }
 
-            match op.name {
-                "AND" => self.and(),
-                "ADC" => self.adc(),
-                "*ANC" => self.anc(),
-                "*ARR" => self.arr(),
-                "ASL" => self.asl(),
-                "*ASR" => self.asr(),
-                "*AXS" => self.axs(),
-                "BCC" => self.bcc(),
-                "BCS" => self.bcs(),
-                "BEQ" => self.beq(),
-                "BIT" => self.bit(),
-                "BPL" => self.bpl(),
-                "BMI" => self.bmi(),
-                "BNE" => self.bne(),
-                "BRK" => self.brk(),
-                "BVC" => self.bvc(),
-                "BVS" => self.bvs(),
-                "CLC" => self.clc(),
-                "CLD" => self.cld(),
-                "CLI" => self.cli(),
-                "CLV" => self.clv(),
-                "CMP" => self.cmp(),
-                "CPX" => self.cpx(),
-                "CPY" => self.cpy(),
-                "*DCP" => self.dcp(),
-                "DEC" => self.dec(),
-                "DEX" => self.dex(),
-                "DEY" => self.dey(),
-                "EOR" => self.eor(),
-                "INC" => self.inc(),
-                "INX" => self.inx(),
-                "INY" => self.iny(),
-                "*ISB" => self.isb(),
-                "JMP" => self.jmp(),
-                "JSR" => self.jsr(),
-                "*LAX" => self.lax(),
-                "LDA" => self.lda(),
-                "LDX" => self.ldx(),
-                "LDY" => self.ldy(),
-                "LSR" => self.lsr(),
-                "*LXA" => self.lxa(),
-                "NOP" | "*NOP" => self.nop(),
-                "ORA" => self.ora(),
-                "PHA" => self.pha(),
-                "PHP" => self.php(),
-                "PLA" => self.pla(),
-                "PLP" => self.plp(),
-                "ROL" => self.rol(),
-                "ROR" => self.ror(),
-                "*RLA" => self.rla(),
-                "*RRA" => self.rra(),
-                "RTI" => self.rti(),
-                "RTS" => self.rts(),
-                "*SAX" => self.sax(),
-                "SBC" | "*SBC" => self.sbc(),
-                "SEC" => self.sec(),
-                "SED" => self.sed(),
-                "SEI" => self.sei(),
-                "*SHX" => self.shx(),
-                "*SHY" => self.shy(),
-                "*SLO" => self.slo(),
-                "*SRE" => self.sre(),
-                "STA" => self.sta(),
-                "STY" => self.sty(),
-                "STX" => self.stx(),
-                "TAX" => self.tax(),
-                "TAY" => self.tay(),
-                "TSX" => self.tsx(),
-                "TXA" => self.txa(),
-                "TXS" => self.txs(),
-                "TYA" => self.tya(),
-                _ => panic!("Unknown opcode: {:02x}", opcode),
-            }
+    fn run(&mut self) {
+        self.log();
+        let opcode = self.get_op_code();
 
-            if self.prev_run_irq || self.prev_need_nmi {
-                self.irq();
-            }
+        let searched_op = OPS.binary_search_by_key(&opcode, |op| op.hex);
+        let op = if searched_op.is_err() {
+            println!("Invalid opcode: {:02X}", opcode);
+            &OPS[OPS
+                .binary_search_by_key(&"NOP", |op| op.name)
+                .unwrap()]
+        } else {
+            &OPS[OPS.binary_search_by_key(&opcode, |op| op.hex).unwrap()]
+        };
+        self.instr_addr_mode = op.addressing_mode;
+        self.operand = self.fetch_operand();
+
+        match op.name {
+            "AND" => self.and(),
+            "ADC" => self.adc(),
+            "*ANC" => self.anc(),
+            "*ARR" => self.arr(),
+            "ASL" => self.asl(),
+            "*ASR" => self.asr(),
+            "*AXS" => self.axs(),
+            "BCC" => self.bcc(),
+            "BCS" => self.bcs(),
+            "BEQ" => self.beq(),
+            "BIT" => self.bit(),
+            "BPL" => self.bpl(),
+            "BMI" => self.bmi(),
+            "BNE" => self.bne(),
+            "BRK" => self.brk(),
+            "BVC" => self.bvc(),
+            "BVS" => self.bvs(),
+            "CLC" => self.clc(),
+            "CLD" => self.cld(),
+            "CLI" => self.cli(),
+            "CLV" => self.clv(),
+            "CMP" => self.cmp(),
+            "CPX" => self.cpx(),
+            "CPY" => self.cpy(),
+            "*DCP" => self.dcp(),
+            "DEC" => self.dec(),
+            "DEX" => self.dex(),
+            "DEY" => self.dey(),
+            "EOR" => self.eor(),
+            "INC" => self.inc(),
+            "INX" => self.inx(),
+            "INY" => self.iny(),
+            "*ISB" => self.isb(),
+            "JMP" => self.jmp(),
+            "JSR" => self.jsr(),
+            "*LAX" => self.lax(),
+            "LDA" => self.lda(),
+            "LDX" => self.ldx(),
+            "LDY" => self.ldy(),
+            "LSR" => self.lsr(),
+            "*LXA" => self.lxa(),
+            "NOP" | "*NOP" => self.nop(),
+            "ORA" => self.ora(),
+            "PHA" => self.pha(),
+            "PHP" => self.php(),
+            "PLA" => self.pla(),
+            "PLP" => self.plp(),
+            "ROL" => self.rol(),
+            "ROR" => self.ror(),
+            "*RLA" => self.rla(),
+            "*RRA" => self.rra(),
+            "RTI" => self.rti(),
+            "RTS" => self.rts(),
+            "*SAX" => self.sax(),
+            "SBC" | "*SBC" => self.sbc(),
+            "SEC" => self.sec(),
+            "SED" => self.sed(),
+            "SEI" => self.sei(),
+            "*SHX" => self.shx(),
+            "*SHY" => self.shy(),
+            "*SLO" => self.slo(),
+            "*SRE" => self.sre(),
+            "STA" => self.sta(),
+            "STY" => self.sty(),
+            "STX" => self.stx(),
+            "TAX" => self.tax(),
+            "TAY" => self.tay(),
+            "TSX" => self.tsx(),
+            "TXA" => self.txa(),
+            "TXS" => self.txs(),
+            "TYA" => self.tya(),
+            _ => panic!("Unknown opcode: {:02x}", opcode),
+        }
+
+        if self.prev_run_irq || self.prev_need_nmi {
+            self.irq();
         }
     }
 }

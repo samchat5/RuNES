@@ -99,7 +99,7 @@ pub struct PPU {
     first_visible_sprite_addr: u8,
     last_visible_sprite_addr: u8,
     sprite_0_visible: bool,
-    frame_count: usize,
+    pub(crate) frame_count: usize,
     prev_rendering_enabled: bool,
     rendering_enabled: bool,
     need_state_update: bool,

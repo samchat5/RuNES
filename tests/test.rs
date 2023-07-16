@@ -5,10 +5,10 @@ macro_rules! integration_tests {
             fn $name() {
                 let (file, cycles, hash) = $value;
                 let rom = File::new(file);
-                let bus = Bus::new(&rom, |_, _| {});
+                let bus = Bus::new(&rom);
                 let mut cpu = CPU::new(bus);
                 cpu.reset();
-                cpu.run(cycles);
+                cpu.run_for_cycles(cycles);
                 let actual = cpu.get_frame_hash();
                 assert_eq!(actual, hash, "Actual hash was {}", actual);
             }
@@ -79,4 +79,5 @@ mod tests {
     // let rom = File::new("tests/scanline-a1/scanline.nes"); // Passes
     // let rom = File::new("tests/window5/colorwin_ntsc.nes"); // Passes
     // let rom = File::new("tests/spritecans-2011/spritecans.nes"); // Passes
+    // let rom = File::new("tests/nmi_sync/demo_ntsc.nes"); // Fails
 }

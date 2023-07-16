@@ -1,7 +1,16 @@
 extern crate core;
 
-pub mod bus;
+#[warn(clippy::all)]
+#[deny(clippy::correctness)]
+#[warn(clippy::suspicious)]
+#[warn(clippy::style)]
+#[warn(clippy::complexity)]
+#[warn(clippy::perf)]
+#[warn(clippy::pedantic)]
+#[warn(clippy::cargo)]
+pub mod apu;
 pub mod config;
+pub mod bus;
 pub mod cpu;
 pub mod frame;
 pub mod ines_parser;

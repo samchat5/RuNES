@@ -1,5 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
+use crate::apu::base_channel::AudioChannel;
+use crate::apu::APU;
 use crate::ines_parser::Flags1Enum;
 use crate::joypad::Joypad;
 use crate::{
@@ -17,30 +19,26 @@ const APU_IO_SIZE: usize = 0x0020;
 const APU_IO_START: u16 = 0x4000;
 const APU_IO_END: u16 = 0x401F;
 
-type CallbackType<'a> = Box<dyn FnMut(&mut PPU, &mut Joypad) + 'a>;
-
-pub struct Bus<'a> {
+pub struct Bus {
     cpu_ram: [u8; RAM_SIZE],
     apu_io: [u8; APU_IO_SIZE],
     pub ppu: PPU,
-    joypad: Joypad,
+    pub(crate) apu: APU,
+    pub joypad: Joypad,
     mapper: Rc<RefCell<dyn Mapper>>,
-    callback: CallbackType<'a>,
 }
 
-impl<'a> Bus<'a> {
-    pub fn new<F>(file: &'a File, callback: F) -> Bus<'a>
-    where
-        F: FnMut(&mut PPU, &mut Joypad) + 'a,
-    {
+impl Bus {
+    pub fn new(file: &File) -> Bus {
         let mapper = Self::get_mapper_from_num(file);
+
         Bus {
             cpu_ram: [0; RAM_SIZE],
             apu_io: [0; APU_IO_SIZE],
             mapper: mapper.clone(),
             joypad: Joypad::default(),
             ppu: PPU::new(mapper.clone()),
-            callback: Box::new(callback),
+            apu: APU::new(),
         }
     }
 
@@ -95,10 +93,6 @@ impl<'a> Bus<'a> {
         (high as u16) << 8 | low as u16
     }
 
-    pub fn call_new_frame(&mut self) {
-        (self.callback)(&mut self.ppu, &mut self.joypad);
-    }
-
     pub fn read(&mut self, addr: u16) -> u8 {
         match addr {
             RAM_START..=RAM_END => self.cpu_ram[(addr & 0x07FF) as usize],
@@ -114,18 +108,18 @@ impl<'a> Bus<'a> {
         (high as u16) << 8 | low as u16
     }
 
-    pub fn write(&mut self, addr: u16, data: u8) {
+    pub fn write(&mut self, addr: u16, data: u8, cpu_cycle: u64) {
         match addr {
             RAM_START..=RAM_END => self.cpu_ram[(addr & 0x07FF) as usize] = data,
             PPU_REG_START..=PPU_REG_END => self.execute_ppu_write(addr, data),
-            APU_IO_START..=APU_IO_END => self.execute_apu_io_write(addr, data),
+            APU_IO_START..=APU_IO_END => self.execute_apu_io_write(addr, data, cpu_cycle),
             _ => self.mapper.borrow_mut().write(addr, data),
         }
     }
 
-    pub fn write_16(&mut self, addr: u16, data: u16) {
-        self.write(addr, data as u8);
-        self.write(addr + 1, (data >> 8) as u8);
+    pub fn write_16(&mut self, addr: u16, data: u16, cpu_cycle: u64) {
+        self.write(addr, data as u8, cpu_cycle);
+        self.write(addr + 1, (data >> 8) as u8, cpu_cycle);
     }
 
     fn execute_apu_io_read(&mut self, addr: u16) -> u8 {
@@ -134,17 +128,27 @@ impl<'a> Bus<'a> {
             0x16 => self.joypad.read(),
             // Controller 2 data disabled -- always return 0
             0x17 => 0,
-            0..=0x1f => self.apu_io[mapper_addr as usize],
-            _ => unreachable!(),
+            0x15 => self.apu.read_status(),
+            _ => self.ppu.open_bus,
         }
     }
 
-    fn execute_apu_io_write(&mut self, addr: u16, data: u8) {
-        let mapper_addr = (addr - APU_IO_START) % 0x1F;
-        match mapper_addr {
+    fn execute_apu_io_write(&mut self, addr: u16, data: u8, _cpu_cycle: u64) {
+        let mapped_addr = (addr - APU_IO_START) % 0x1F;
+        match mapped_addr {
+            0x00 => self.apu.write_ctrl(AudioChannel::Pulse1, data),
+            0x01 => self.apu.write_sweep(AudioChannel::Pulse1, data),
+            0x02 => self.apu.write_timer_lo(AudioChannel::Pulse1, data),
+            0x03 => self.apu.write_timer_hi(AudioChannel::Pulse1, data),
+            0x04 => self.apu.write_ctrl(AudioChannel::Pulse2, data),
+            0x05 => self.apu.write_sweep(AudioChannel::Pulse2, data),
+            0x06 => self.apu.write_timer_lo(AudioChannel::Pulse2, data),
+            0x07 => self.apu.write_timer_hi(AudioChannel::Pulse2, data),
+            0x08..=0x13 => {}
             0x14 => self.ppu.write_oamdma(data),
+            0x15 => self.apu.write_status(data),
             0x16 => self.joypad.write(data),
-            0..=0x1f => self.apu_io[mapper_addr as usize] = data,
+            0x17 => self.apu.write_frame_counter(data),
             _ => unreachable!(),
         }
     }
@@ -194,8 +198,6 @@ impl<'a> Bus<'a> {
     }
 
     pub(crate) fn run_to(&mut self, cyc: u64) {
-        if self.ppu.run_to(cyc) {
-            self.call_new_frame();
-        }
+        self.ppu.run_to(cyc);
     }
 }
