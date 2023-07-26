@@ -148,10 +148,9 @@ impl Loggable for CPU<'_> {
                 .trim()
                 .to_string();
 
-            let binding = self.bus.borrow_mut();
             let cycles = self.cycle_count;
-            let ppu_scanline = binding.ppu.scanline;
-            let ppu_cycle = binding.ppu.cycle;
+            let ppu_scanline = self.bus.ppu.scanline;
+            let ppu_cycle = self.bus.ppu.cycle;
 
             let msg = format!(
                 "{:47} A:{:02x} X:{:02x} Y:{:02x} P:{:02x} SP:{:02x} PPU:{:3},{:3} CYC:{}",

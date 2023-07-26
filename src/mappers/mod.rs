@@ -1,3 +1,9 @@
+use std::{cell::RefCell, rc::Rc};
+
+use crate::ines_parser::{File, Flags1Enum};
+
+use self::{cnrom::CNROM, mmc1::MMC1, nrom::NROM};
+
 pub mod cnrom;
 pub mod mmc1;
 pub mod nrom;
@@ -8,6 +14,48 @@ pub enum Mirroring {
     FourScreen,
     SingleScreenA,
     SingleScreenB,
+}
+
+pub type SharedMapper = Rc<RefCell<Box<dyn Mapper>>>;
+
+pub struct MapperFactory;
+
+impl MapperFactory {
+    pub fn from_file(file: &File) -> Box<dyn Mapper> {
+        let mapper_num = file.header.flags1.get(Flags1Enum::MAPPER_NUM);
+        let prg_ram_size = file.get_prg_ram_size();
+        let eeprom_size = file.get_eeprom_size();
+        let has_battery = file.header.flags1.get(Flags1Enum::BATTERY) != 0;
+        let prg_rom_area = file.prg_rom_area.clone();
+        let chr_rom_area = file.chr_rom_area.clone();
+
+        match mapper_num {
+            0 => Box::new(NROM::new(
+                prg_rom_area,
+                chr_rom_area,
+                prg_ram_size,
+                eeprom_size,
+                has_battery,
+                file.header.flags1.get(Flags1Enum::NAME_TABLE_MIRROR),
+            )),
+            1 => Box::new(MMC1::new(
+                prg_rom_area,
+                chr_rom_area,
+                prg_ram_size,
+                eeprom_size,
+                has_battery,
+            )),
+            3 => Box::new(CNROM::new(
+                prg_rom_area,
+                chr_rom_area,
+                prg_ram_size,
+                eeprom_size,
+                has_battery,
+                file.header.flags1.get(Flags1Enum::NAME_TABLE_MIRROR),
+            )),
+            _ => panic!("Unsupported mapper {}", mapper_num),
+        }
+    }
 }
 
 pub trait Mapper {

@@ -1,5 +1,5 @@
-use crate::config::Config;
 use crate::bus::Bus;
+use crate::config::Config;
 use crate::cpu::CPU;
 use crate::ines_parser::File;
 use crate::joypad::Buttons;
@@ -92,7 +92,7 @@ impl SDLApp {
     }
 
     fn handle_keyevent(&mut self) {
-        let joypad = &mut self.cpu.bus.borrow_mut().joypad;
+        let joypad = &mut self.cpu.bus.joypad;
         for event in self.event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -147,18 +147,18 @@ impl SDLApp {
 
     fn emulate(&mut self, texture: &mut Texture) {
         self.cpu.run_until_frame();
-        let ppu = &self.cpu.bus.borrow().ppu;
+        let ppu = &self.cpu.bus.ppu;
         let frame = ppu.curr_frame;
         texture.update(None, &(frame).image, 256 * 3).unwrap();
     }
 
     fn execute(&mut self, texture: &mut Texture) {
         self.emulate(texture);
-        let apu = &mut self.cpu.bus.borrow_mut().apu;
+        let apu = &mut self.cpu.bus.apu;
         self.queue.queue_audio(apu.get_buffer()).unwrap();
         apu.clear_buffer();
 
-        self.canvas.copy(&texture, None, None).unwrap();
+        self.canvas.copy(texture, None, None).unwrap();
 
         self.canvas.present();
     }

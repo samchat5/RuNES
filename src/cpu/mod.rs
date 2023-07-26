@@ -1,12 +1,10 @@
 use core::panic;
-use std::cell::RefCell;
 use std::io::{self, Write};
-use std::rc::Rc;
 
 use bitflags::bitflags;
 
-use crate::bus::Bus;
 use crate::ppu::DMAFlag;
+use crate::{apu::frame_counter::IRQSignal, bus::Bus};
 
 use self::{
     cpu_units::{
@@ -40,6 +38,14 @@ bitflags! {
             | Self::BREAK.bits()
             | Self::OVERFLOW.bits()
             | Self::NEGATIVE.bits();
+    }
+}
+
+bitflags! {
+    pub struct IRQSource: u8 {
+        const EXT = 0x01;
+        const FRAME_COUNTER = 0x02;
+        const DMC = 0x04;
     }
 }
 
@@ -81,28 +87,32 @@ pub struct CPU<'a> {
     // Status flags
     pub status: Status,
 
-    pub bus: Rc<RefCell<Bus>>,
+    pub bus: Bus,
 
     // Logger
     pub sink: Box<dyn Write + Send>,
     logging_enabled: bool,
 
     // Flags
-    irq_flag: bool,
-    need_halt: bool,
+    irq_flag: IRQSource,
+    irq_mask: u8,
+    prev_run_irq: bool,
     run_irq: bool,
+
     start_clock_count: u8,
     end_clock_count: u8,
     master_clock: u64,
     cycle_count: u64,
-    ppu_offset: u8,
+
     need_nmi: bool,
     prev_need_nmi: bool,
-    prev_run_irq: bool,
+    prev_nmi_flag: bool,
+
+    need_halt: bool,
+    ppu_offset: u8,
     instr_addr_mode: AddressingMode,
     cpu_write: bool,
     operand: u16,
-    prev_nmi_flag: bool,
     sprite_dma_transfer: bool,
     need_dummy_read: bool,
     sprite_dma_offset: u8,
@@ -118,11 +128,11 @@ impl CPU<'_> {
             acc: 0,
             sp: 0xFD,
             pc: 0,
-            bus: Rc::new(RefCell::from(bus)),
+            bus,
             status: Status { bits: 0x04 },
             sink: Box::new(io::sink()),
             logging_enabled: false,
-            irq_flag: false,
+            irq_flag: IRQSource { bits: 0 },
             need_halt: false,
             run_irq: false,
             start_clock_count: 6,
@@ -140,12 +150,13 @@ impl CPU<'_> {
             sprite_dma_transfer: false,
             need_dummy_read: false,
             sprite_dma_offset: 0,
+            irq_mask: 0,
             phantom: std::marker::PhantomData,
         }
     }
 
     fn poll_sprite_dma_flag(&mut self) {
-        if let DMAFlag::Enabled(x) = self.bus.borrow().ppu.sprite_dma_transfer {
+        if let DMAFlag::Enabled(x) = self.bus.ppu.sprite_dma_transfer {
             self.sprite_dma_transfer = true;
             self.sprite_dma_offset = x;
             self.need_halt = true
@@ -153,28 +164,38 @@ impl CPU<'_> {
     }
 
     fn set_sprite_dma_transfer(&mut self, val: bool) {
-        self.bus.borrow_mut().ppu.sprite_dma_transfer = DMAFlag::Disabled;
+        self.bus.ppu.sprite_dma_transfer = DMAFlag::Disabled;
         self.sprite_dma_transfer = val;
     }
 
     fn read_trace(&self, addr: u16) -> u8 {
-        self.bus.borrow().read_trace(addr)
+        self.bus.read_trace(addr)
     }
 
     fn read_16_trace(&self, addr: u16) -> u16 {
-        self.bus.borrow().read_16_trace(addr)
+        self.bus.read_16_trace(addr)
     }
 
     fn read(&mut self, addr: u16) -> u8 {
-        self.bus.borrow_mut().read(addr)
+        let ret = self.bus.read(addr);
+        match ret.1 {
+            IRQSignal::Set => self.irq_flag.set(IRQSource::FRAME_COUNTER, true),
+            IRQSignal::Clear => self.irq_flag.set(IRQSource::FRAME_COUNTER, false),
+            IRQSignal::None => {}
+        }
+        ret.0
     }
 
     fn write(&mut self, addr: u16, val: u8) {
-        self.bus.borrow_mut().write(addr, val, self.cycle_count);
+        match self.bus.write(addr, val, self.cycle_count) {
+            IRQSignal::Set => self.irq_flag.set(IRQSource::FRAME_COUNTER, true),
+            IRQSignal::Clear => self.irq_flag.set(IRQSource::FRAME_COUNTER, false),
+            IRQSignal::None => {}
+        }
     }
 
     fn run_to(&mut self, cyc: u64) {
-        self.bus.borrow_mut().run_to(cyc);
+        self.bus.run_to(cyc);
     }
 
     pub fn enable_logging(&mut self) {
@@ -468,9 +489,10 @@ impl CPU<'_> {
     }
 
     pub fn reset(&mut self) {
-        self.bus.borrow_mut().set_nmi_generated(false);
-        self.irq_flag = false;
+        self.bus.set_nmi_generated(false);
+        self.irq_flag = IRQSource { bits: 0 };
         self.need_halt = false;
+        self.irq_mask = 0xff;
 
         self.pc = self.read(0xFFFC) as u16 | ((self.read(0xFFFD) as u16) << 8);
 
@@ -495,7 +517,7 @@ impl CPU<'_> {
     }
 
     fn get_nmi_flag(&self) -> bool {
-        self.bus.borrow().ppu.nmi_generated
+        self.bus.ppu.nmi_generated
     }
 
     fn start_cpu_cycle(&mut self, is_read: bool) {
@@ -506,10 +528,9 @@ impl CPU<'_> {
         } as u64;
         self.cycle_count = self.cycle_count.wrapping_add(1);
         self.run_to(self.master_clock - self.ppu_offset as u64);
-        self.bus.borrow_mut().apu.clock();
-        // if self.bus.borrow_mut().apu.clock() {
-        //     self.irq_flag = true;
-        // }
+        if self.bus.apu.clock() {
+            self.irq_flag.set(IRQSource::FRAME_COUNTER, true);
+        }
     }
 
     fn end_cpu_cycle(&mut self, is_read: bool) {
@@ -528,7 +549,8 @@ impl CPU<'_> {
         self.prev_nmi_flag = self.get_nmi_flag();
 
         self.prev_run_irq = self.run_irq;
-        self.run_irq = self.irq_flag && !self.status.contains(Status::INTERRUPT_DISABLE)
+        self.run_irq = (self.irq_flag.bits & self.irq_mask) > 0
+            && !self.status.contains(Status::INTERRUPT_DISABLE)
     }
 
     fn get_op_code(&mut self) -> u8 {
@@ -548,7 +570,7 @@ impl CPU<'_> {
     }
 
     pub fn get_frame_hash(&self) -> u64 {
-        self.bus.borrow().ppu.curr_frame.get_hash()
+        self.bus.ppu.curr_frame.get_hash()
     }
 
     pub fn run_for_cycles(&mut self, cycles: u64) {
@@ -558,8 +580,8 @@ impl CPU<'_> {
     }
 
     pub fn run_until_frame(&mut self) {
-        let frame_num = self.bus.borrow().ppu.frame_count;
-        while self.bus.borrow().ppu.frame_count == frame_num {
+        let frame_num = self.bus.ppu.frame_count;
+        while self.bus.ppu.frame_count == frame_num {
             self.run();
         }
     }
@@ -571,9 +593,7 @@ impl CPU<'_> {
         let searched_op = OPS.binary_search_by_key(&opcode, |op| op.hex);
         let op = if searched_op.is_err() {
             println!("Invalid opcode: {:02X}", opcode);
-            &OPS[OPS
-                .binary_search_by_key(&"NOP", |op| op.name)
-                .unwrap()]
+            &OPS[OPS.binary_search_by_key(&"NOP", |op| op.name).unwrap()]
         } else {
             &OPS[OPS.binary_search_by_key(&opcode, |op| op.hex).unwrap()]
         };

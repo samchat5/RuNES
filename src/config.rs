@@ -16,6 +16,6 @@ impl Config {
     }
 
     pub fn get_string(prop: &str, default: &str) -> String {
-        CONF.get_string(prop).unwrap_or(default.to_string())
+        CONF.get_string(prop).unwrap_or_else(|_| default.to_string())
     }
 }

@@ -1,9 +1,10 @@
 #[derive(Default)]
 pub struct Sweep {
     pub enabled: bool,
-    pub reload: bool,
     pub negate: bool,
-    pub timer: u8,
-    pub counter: u8,
+    pub divider: u8,
     pub shift: u8,
+    pub target_period: u32,
+    pub period: u8,
+    pub reload: bool,
 }

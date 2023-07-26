@@ -1,8 +1,6 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
+use crate::frame::Frame;
+use crate::mappers::SharedMapper;
 use crate::ppu::palettes::Palette;
-use crate::{frame::Frame, mappers::Mapper};
 
 use self::registers::{control::Control, mask::Mask, status::Status};
 
@@ -56,7 +54,7 @@ pub struct PPU {
     pub curr_frame: Frame,
 
     pub nmi_generated: bool,
-    mapper: Rc<RefCell<dyn Mapper>>,
+    mapper: SharedMapper,
 
     // Represents the first cycle a BG pixel or sprite can be draw. Modified by mask and enable
     // flags, but is otherwise 0
@@ -114,7 +112,7 @@ pub struct PPU {
 }
 
 impl PPU {
-    pub fn new(mapper: Rc<RefCell<dyn Mapper>>) -> PPU {
+    pub fn new(mapper: SharedMapper) -> PPU {
         PPU {
             ctrl: Control::new(),
             status_flags: Status::new(),
