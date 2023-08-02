@@ -44,11 +44,9 @@ pub struct FrameCounter {
     previous_cycle: i32,
     pub step: usize,
     pub mode: Mode,
+    write_buffer: Option<u8>,
     write_delay: i8,
-    inhibit_irq: bool,
-
     block_tick: u8,
-    new_val: i16,
 }
 
 impl Default for FrameCounter {
@@ -58,22 +56,25 @@ impl Default for FrameCounter {
             step: 0,
             mode: Mode::FourStep,
             write_delay: 3,
-            inhibit_irq: false,
             block_tick: 0,
-            new_val: 0x00,
+            write_buffer: None,
         }
     }
 }
 
 impl FrameCounter {
-    pub fn clock(&mut self, cycles_to_run: &mut i32, mut callback: impl FnMut(FrameType)) -> (IRQSignal, u32) {
-        let mut cycles_ran = 0u32;
+    pub fn clock(
+        &mut self,
+        inhibit_irq: bool,
+        cycles_to_run: &mut i32,
+        mut callback: impl FnMut(FrameType),
+    ) -> (IRQSignal, u32) {
+        let cycles_ran;
         let mut signal = IRQSignal::None;
 
-        if self.previous_cycle + *cycles_to_run
-            >= STEP_CYCLES[self.mode as usize][self.step] as i32
+        if self.previous_cycle + *cycles_to_run >= STEP_CYCLES[self.mode as usize][self.step] as i32
         {
-            if !self.inhibit_irq && self.mode == Mode::FourStep && self.step >= 3 {
+            if !inhibit_irq && self.mode == Mode::FourStep && self.step >= 3 {
                 signal = IRQSignal::Set;
             }
 
@@ -83,12 +84,13 @@ impl FrameCounter {
                 self.block_tick = 2;
             }
 
-            if (STEP_CYCLES[self.mode as usize][self.step] as i32) < self.previous_cycle {
-                cycles_ran = 0
+            cycles_ran = if (STEP_CYCLES[self.mode as usize][self.step] as i32) < self.previous_cycle {
+                0
             } else {
-                cycles_ran =
-                    (STEP_CYCLES[self.mode as usize][self.step] as i32 - self.previous_cycle).abs() as u32;
-            }
+                (STEP_CYCLES[self.mode as usize][self.step] as i32
+                    - self.previous_cycle)
+                    .abs() as u32
+            };
 
             *cycles_to_run -= cycles_ran as i32;
 
@@ -105,10 +107,10 @@ impl FrameCounter {
             self.previous_cycle += cycles_ran as i32;
         }
 
-        if self.new_val >= 0 {
+        if self.write_buffer.is_some() {
             self.write_delay -= 1;
             if self.write_delay == 0 {
-                self.mode = if self.new_val & 0x80 != 0 {
+                self.mode = if self.write_buffer.unwrap() & 0x80 != 0 {
                     Mode::FiveStep
                 } else {
                     Mode::FourStep
@@ -117,10 +119,10 @@ impl FrameCounter {
                 self.write_delay = -1;
                 self.step = 0;
                 self.previous_cycle = 0;
-                self.new_val = -1;
+                self.write_buffer = None;
 
                 if self.mode == Mode::FiveStep && self.block_tick == 0 {
-                    (callback)(FrameType::HalfFrame); 
+                    (callback)(FrameType::HalfFrame);
                     self.block_tick = 2;
                 }
             }
@@ -133,27 +135,15 @@ impl FrameCounter {
         (signal, cycles_ran)
     }
 
-    pub fn write(&mut self, val: u8, cycle: usize) -> IRQSignal {
-        self.new_val = val as i16;
-
-        if cycle & 1 == 1 {
-            self.write_delay = 4;
-        } else {
-            self.write_delay = 3;
-        }
-
-        self.inhibit_irq = (val & 0x40) == 0x40;
-        if self.inhibit_irq {
-            IRQSignal::Clear
-        } else {
-            IRQSignal::None
-        }
-    }
-
     pub fn need_to_run(&self, cycles_to_run: u32) -> bool {
-        return self.new_val >= 0
+        return self.write_buffer.is_some()
             || self.block_tick > 0
             || (self.previous_cycle + cycles_to_run as i32)
                 >= (STEP_CYCLES[self.mode as usize][self.step] as i32) - 1;
+    }
+
+    pub fn write(&mut self, val: u8, cycle: usize) {
+        self.write_buffer = Some(val);
+        self.write_delay = if cycle & 1 == 1 { 4 } else { 3 }
     }
 }

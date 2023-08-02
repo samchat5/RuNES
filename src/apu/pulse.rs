@@ -1,6 +1,10 @@
 use crate::apu::base_channel::AudioChannel;
 
-use super::{envelope::Envelope, length_counter::{LengthCounter, NeedToRunFlag}, sweep::Sweep};
+use super::{
+    envelope::Envelope,
+    length_counter::{LengthCounter, NeedToRunFlag},
+    sweep::Sweep,
+};
 
 const EIGHTH: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 1];
 const QUARTER: [u8; 8] = [0, 0, 0, 0, 0, 0, 1, 1];
@@ -10,15 +14,15 @@ const DUTY_CYCLES: [[u8; 8]; 4] = [EIGHTH, QUARTER, HALF, QUARTER_NEG];
 
 pub struct Pulse {
     channel: AudioChannel,
-    length: LengthCounter,
+    pub length: LengthCounter,
     envelope: Envelope,
     sweep: Sweep,
     real_period: u16,
     period: u16,
     previous_cycle: u64,
     timer: u16,
-    duty_pos: u8,
-    duty: u8
+    duty_counter: u8,
+    duty_cycle: u8,
 }
 
 impl Pulse {
@@ -32,8 +36,8 @@ impl Pulse {
             period: 0,
             previous_cycle: 0,
             timer: 0,
-            duty_pos: 0,
-            duty: 0,
+            duty_counter: 0,
+            duty_cycle: 0,
         }
     }
 
@@ -41,11 +45,12 @@ impl Pulse {
         if self.is_muted() {
             return 0;
         }
-        return (DUTY_CYCLES[self.duty as usize][self.duty_pos as usize] as u32 * self.get_volume()) as u8;
+        return (DUTY_CYCLES[self.duty_cycle as usize][self.duty_counter as usize] as u32
+            * self.get_volume()) as u8;
     }
 
-    pub fn clock_envelope(&mut self) {
-        self.envelope.clock(self.length.halt);
+    pub fn clock_quarter_frame(&mut self) {
+        self.envelope.clock();
     }
 
     pub fn clock_length_counter(&mut self) {
@@ -75,42 +80,18 @@ impl Pulse {
         self.length.reload();
     }
 
-    pub fn clock(&mut self, target_cycle: u64) {
-        let mut cycles_to_run = target_cycle - self.previous_cycle;
-        while cycles_to_run > self.timer as u64 {
-            cycles_to_run -= self.timer as u64 + 1;
-            self.previous_cycle += self.timer as u64 + 1;
-            self.duty_pos = (self.duty_pos.wrapping_sub(1)) & 0x07;
-            self.timer = self.period;
-        }
-        self.timer -= cycles_to_run as u16;
-        self.previous_cycle = target_cycle;
-    }
-
-    pub fn get_status(&self) -> bool {
-        return self.length.counter > 0;
-    } 
-    
-    pub fn set_enabled(&mut self, enabled: bool) {
-        if !enabled {
-            self.length.counter = 0;
-        }
-        self.length.enabled = enabled;
-    }
-
     pub fn write_ctrl(&mut self, val: u8) -> NeedToRunFlag {
-        let flag = self.length.init((val & 0x20) == 0x20);
-        self.envelope.init(val);
-        self.duty = (val & 0xc0) >> 6;
+        self.duty_cycle = (val >> 6) & 0x3;
+        let flag = self.length.write_ctrl(val);
+        self.envelope.write_ctrl(val);
         return flag;
-
     }
-    
+
     pub fn write_sweep(&mut self, val: u8) {
         self.sweep.enabled = (val & 0x80) == 0x80;
-        self.sweep.negate = (val & 0x08) == 0x08;
+        self.sweep.negate = (val >> 3) & 0x1 == 0x1;
+        self.sweep.shift = val & 0x7;
         self.sweep.period = ((val & 0x70) >> 4) + 1;
-        self.sweep.shift = val & 0x07;
 
         self.update_target_period();
 
@@ -118,24 +99,46 @@ impl Pulse {
     }
 
     pub fn write_timer_lo(&mut self, val: u8) {
-        self.set_period((self.real_period & 0x0700) | val as u16)
+        self.set_period((self.real_period & 0xFF00) | val as u16)
     }
 
     pub fn write_timer_hi(&mut self, val: u8) -> NeedToRunFlag {
-        let flag = self.length.load(val >> 3);
-        self.set_period((self.real_period & 0xff) | ((val as u16 & 0x07) << 8));
-        self.duty_pos = 0;
-        self.envelope.reset();
+        self.set_period((self.real_period & 0x00FF) | ((val as u16 & 0x7) << 8));
+        self.duty_counter = 0;
+        self.envelope.reset = true;
+        let mut flag = NeedToRunFlag(None);
+        if self.length.enabled {
+            flag = self.length.load_value(val);
+        }
         return flag;
+    }
+
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.length.enabled = enabled;
+        if !enabled {
+            self.length.counter = 0;
+        }
+    }
+
+    pub fn clock(&mut self, target_cycle: u64) {
+        let mut cycles_to_run = target_cycle - self.previous_cycle;
+        while cycles_to_run > self.timer as u64 {
+            cycles_to_run -= self.timer as u64 + 1;
+            self.previous_cycle += self.timer as u64 + 1;
+            self.duty_counter = (self.duty_counter.wrapping_sub(1)) & 0x07;
+            self.timer = self.period;
+        }
+        self.timer -= cycles_to_run as u16;
+        self.previous_cycle = target_cycle;
     }
 
     fn get_volume(&self) -> u32 {
         if self.length.counter > 0 {
-            if self.envelope.constant_volume {
+            if self.envelope.enabled {
                 return self.envelope.volume as u32;
-            } 
-            return self.envelope.counter as u32;
-        } 
+            }
+            return self.envelope.constant_volume as u32;
+        }
         return 0;
     }
 

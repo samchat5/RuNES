@@ -62,8 +62,21 @@ mod tests {
         m1_p128k_c128k_s8k : ("tests/holy-mapperel/M1_P128K_C128K_S8K.nes", 2442022, 17191105395120435064);
         m1_p128k_c128k_w8k : ("tests/holy-mapperel/M1_P128K_C128K_W8K.nes", 2449514, 2543050301529417715);
         m1_p128k_cr8k: ("tests/holy-mapperel/M1_P128K_CR8K.nes", 2293119, 3560412538058700980);
-
+     
         m3_p32k_c32k_h : ("tests/holy-mapperel/M3_P32K_C32K_H.nes", 148911, 7333994192358773729);
+
+        // APU TESTS -------------------------------------------------------------------------------
+        len_ctr: ("tests/blargg_apu_2005.07.30/01.len_ctr.nes", 749800, 3301376315147960416);
+        len_table: ("tests/blargg_apu_2005.07.30/02.len_table.nes", 325276, 3301376315147960416);
+        irq_flag: ("tests/blargg_apu_2005.07.30/03.irq_flag.nes", 503768, 3301376315147960416);
+        clock_jitter: ("tests/blargg_apu_2005.07.30/04.clock_jitter.nes", 506153, 3301376315147960416);
+        len_timing_mode0: ("tests/blargg_apu_2005.07.30/05.len_timing_mode0.nes", 652672, 3301376315147960416);
+        len_timing_mode1: ("tests/blargg_apu_2005.07.30/06.len_timing_mode1.nes", 712233, 3301376315147960416);
+        irq_flag_timing: ("tests/blargg_apu_2005.07.30/07.irq_flag_timing.nes", 533549, 3301376315147960416);
+        irq_timing: ("tests/blargg_apu_2005.07.30/08.irq_timing.nes", 503768, 3301376315147960416);
+        reset_timing: ("tests/blargg_apu_2005.07.30/09.reset_timing.nes", 354865, 3301376315147960416);
+        len_halt_timing: ("tests/blargg_apu_2005.07.30/10.len_halt_timing.nes", 473988, 3301376315147960416);
+        len_reload_timing: ("tests/blargg_apu_2005.07.30/11.len_reload_timing.nes", 473988, 3301376315147960416);
     }
 
     // CPU Tests -----------------------------------------------------------------------------------

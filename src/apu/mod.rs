@@ -33,6 +33,7 @@ pub struct APU {
     frame_counter: FrameCounter,
     output_buffer: Vec<f32>,
     irq_pending: bool,
+    irq_disabled: bool,
     cycle: usize,
     need_to_run: bool,
     prev_cycle: usize,
@@ -57,6 +58,7 @@ impl APU {
             frame_counter: FrameCounter::default(),
             output_buffer,
             irq_pending: false,
+            irq_disabled: false,
             cycle: 0,
             need_to_run: false,
             prev_cycle: 0,
@@ -65,21 +67,16 @@ impl APU {
 
     pub fn read_status_trace(&self) -> u8 {
         let mut status = 0;
-        status |= self.pulse1.get_status() as u8;
-        status |= (self.pulse2.get_status() as u8) << 1;
-        status |= (self.irq_pending as u8) << 6;
-        return status;
-    }
-
-    pub fn write_frame_counter(&mut self, val: u8) -> IRQSignal {
-        self.run();
-        let signal = self.frame_counter.write(val, self.cycle);
-        match signal {
-            IRQSignal::Clear => self.irq_pending = false,
-            IRQSignal::Set => self.irq_pending = true,
-            IRQSignal::None => {}
+        if self.pulse1.length.counter > 0 {
+            status |= 0x1;
         }
-        signal
+        if self.pulse2.length.counter > 0 {
+            status |= 0x2;
+        }
+        if self.irq_pending {
+            status |= 0x40;
+        }
+        return status;
     }
 
     pub fn clock(&mut self) -> bool {
@@ -87,9 +84,7 @@ impl APU {
         self.cycle += 1;
 
         let s2 = (self.cycle as f64 / CLOCKS_PER_SAMPLE).floor();
-        if self.need_to_run(self.cycle) {
-            self.run();
-        }
+        self.run();
 
         if (s1 - s2).abs() > f64::EPSILON {
             self.output_buffer.push(self.output());
@@ -98,34 +93,12 @@ impl APU {
         self.irq_pending
     }
 
-    pub fn read_status(&mut self) -> (u8, IRQSignal) {
-        self.run();
-
-        let mut status = 0;
-        status |= self.pulse1.get_status() as u8;
-        status |= (self.pulse2.get_status() as u8) << 1;
-        status |= (self.irq_pending as u8) << 6;
-
-        self.irq_pending = false;
-
-        return (status, IRQSignal::Clear);
-    }
-
-    pub fn write_status(&mut self, val: u8) {
-        self.run();
-        self.pulse1.set_enabled((val & 1) == 1);
-        self.pulse2.set_enabled((val & 2) == 2);
-    }
-
     pub fn write_ctrl(&mut self, channel: &AudioChannel, val: u8) {
-        self.run();
         let mut flag = NeedToRunFlag(None);
         match channel {
             AudioChannel::Pulse1 => flag = self.pulse1.write_ctrl(val),
             AudioChannel::Pulse2 => flag = self.pulse2.write_ctrl(val),
-            AudioChannel::Triangle => {}
-            AudioChannel::Noise => {}
-            AudioChannel::DMC => {}
+            _ => {}
         }
 
         if let Some(f) = flag.0 {
@@ -134,37 +107,27 @@ impl APU {
     }
 
     pub fn write_sweep(&mut self, channel: &AudioChannel, val: u8) {
-        self.run();
         match channel {
             AudioChannel::Pulse1 => self.pulse1.write_sweep(val),
             AudioChannel::Pulse2 => self.pulse2.write_sweep(val),
-            AudioChannel::Triangle => {}
-            AudioChannel::Noise => {}
-            AudioChannel::DMC => {}
+            _ => {}
         }
     }
 
     pub fn write_timer_lo(&mut self, channel: &AudioChannel, val: u8) {
-        self.run();
         match channel {
             AudioChannel::Pulse1 => self.pulse1.write_timer_lo(val),
             AudioChannel::Pulse2 => self.pulse2.write_timer_lo(val),
-            AudioChannel::Triangle => {}
-            AudioChannel::Noise => {}
-            AudioChannel::DMC => {}
+            _ => {}
         }
     }
 
     pub fn write_timer_hi(&mut self, channel: &AudioChannel, val: u8) {
-        self.run();
-
         let mut flag = NeedToRunFlag(None);
         match channel {
             AudioChannel::Pulse1 => flag = self.pulse1.write_timer_hi(val),
             AudioChannel::Pulse2 => flag = self.pulse2.write_timer_hi(val),
-            AudioChannel::Triangle => {}
-            AudioChannel::Noise => {}
-            AudioChannel::DMC => {}
+            _ => {}
         }
 
         if let Some(f) = flag.0 {
@@ -172,22 +135,13 @@ impl APU {
         }
     }
 
-    #[must_use]
-    pub fn get_buffer(&self) -> &[f32] {
-        &self.output_buffer
-    }
-
-    pub fn clear_buffer(&mut self) {
-        self.output_buffer.clear();
-    }
-
     fn run(&mut self) {
         let mut cycles_to_run = (self.cycle - self.prev_cycle) as i32;
 
         while cycles_to_run > 0 {
             let callback = |typ: FrameType| {
-                self.pulse1.clock_envelope();
-                self.pulse2.clock_envelope();
+                self.pulse1.clock_quarter_frame();
+                self.pulse2.clock_quarter_frame();
                 if typ == FrameType::HalfFrame {
                     self.pulse1.clock_length_counter();
                     self.pulse2.clock_length_counter();
@@ -196,7 +150,7 @@ impl APU {
                 }
             };
 
-            let (signal, inc) = self.frame_counter.clock(&mut cycles_to_run, callback);
+            let (signal, inc) = self.frame_counter.clock(self.irq_disabled, &mut cycles_to_run, callback);
             self.prev_cycle += inc as usize;
             match signal {
                 IRQSignal::Clear => self.irq_pending = false,
@@ -212,18 +166,48 @@ impl APU {
         }
     }
 
-    fn need_to_run(&mut self, curr_cycle: usize) -> bool {
-        if self.need_to_run {
-            self.need_to_run = false;
-            return true;
+    pub fn read_status(&mut self) -> (u8, IRQSignal) {
+        let mut status = 0x0;
+        if self.pulse1.length.counter > 0 {
+            status |= 0x1;
         }
-        let cycles_to_run = curr_cycle - self.prev_cycle;
-        return self.frame_counter.need_to_run(cycles_to_run as u32);
+        if self.pulse2.length.counter > 0 {
+            status |= 0x2;
+        }
+        if self.irq_pending {
+            status |= 0x40;
+        }
+        self.irq_pending = false;
+        return (status, IRQSignal::Clear);
+    }
+
+    pub fn write_status(&mut self, val: u8) {
+        self.pulse1.set_enabled(val & 0x1 != 0);
+        self.pulse2.set_enabled(val & 0x2 != 0);
+    }
+
+    pub fn write_frame_counter(&mut self, val: u8) -> IRQSignal {
+         self.frame_counter.write(val, self.cycle);
+        self.irq_disabled = val & 0x40 != 0;
+        if self.irq_disabled {
+            self.irq_pending = false;
+            return IRQSignal::Clear;
+        }
+        return IRQSignal::None;
     }
 
     fn output(&self) -> f32 {
         let pulse1 = self.pulse1.output();
         let pulse2 = self.pulse2.output();
         mixer_value(pulse1, pulse2, 0.0, 0.0, 0.0)
+    }
+
+    #[must_use]
+    pub fn get_buffer(&self) -> &[f32] {
+        &self.output_buffer
+    }
+
+    pub fn clear_buffer(&mut self) {
+        self.output_buffer.clear();
     }
 }
