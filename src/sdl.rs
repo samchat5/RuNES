@@ -129,11 +129,15 @@ impl SDLApp {
             self.cpu.enable_logging();
         }
         self.cpu.reset();
+        self.game_loop();
+    }
+
+    fn game_loop(&mut self) {
         let texture_creator = self.canvas.texture_creator();
         let mut texture_manager = TextureManager::new(&texture_creator);
         let texture = &mut texture_manager.texture;
-
         let mut frame_start = SystemTime::now();
+
         loop {
             self.handle_keyevent();
 
@@ -147,9 +151,9 @@ impl SDLApp {
 
     fn emulate(&mut self, texture: &mut Texture) {
         self.cpu.run_until_frame();
-        let ppu = &self.cpu.bus.ppu;
-        let frame = ppu.curr_frame;
-        texture.update(None, &(frame).image, 256 * 3).unwrap();
+        texture
+            .update(None, &self.cpu.bus.ppu.curr_frame.image, 256 * 3)
+            .unwrap();
     }
 
     fn execute(&mut self, texture: &mut Texture) {
