@@ -20,41 +20,42 @@ pub type SharedMapper = Rc<RefCell<Box<dyn Mapper>>>;
 
 pub struct MapperFactory;
 
+macro_rules! mappers {
+    ($file:expr, $( ($num:pat, $to_create:ty) ),*) => {
+        {
+            let mapper_num = $file.header.flags1.get(Flags1Enum::MAPPER_NUM);
+            let prg_ram_size = $file.get_prg_ram_size();
+            let eeprom_size = $file.get_eeprom_size();
+            let has_battery = $file.header.flags1.get(Flags1Enum::BATTERY) != 0;
+            let prg_rom_area = $file.prg_rom_area.clone();
+            let chr_rom_area = $file.chr_rom_area.clone();
+            let mirroring = $file.header.flags1.get(Flags1Enum::NAME_TABLE_MIRROR);
+
+            match mapper_num {
+                $(
+                    $num => Box::new(<$to_create>::new(
+                        prg_rom_area,
+                        chr_rom_area,
+                        prg_ram_size,
+                        eeprom_size,
+                        has_battery,
+                        mirroring,
+                    )),
+                )*
+                _ => panic!("Unsupported mapper {}", mapper_num)
+            }
+        }
+    };
+}
+
 impl MapperFactory {
     pub fn from_file(file: &File) -> Box<dyn Mapper> {
-        let mapper_num = file.header.flags1.get(Flags1Enum::MAPPER_NUM);
-        let prg_ram_size = file.get_prg_ram_size();
-        let eeprom_size = file.get_eeprom_size();
-        let has_battery = file.header.flags1.get(Flags1Enum::BATTERY) != 0;
-        let prg_rom_area = file.prg_rom_area.clone();
-        let chr_rom_area = file.chr_rom_area.clone();
-
-        match mapper_num {
-            0 => Box::new(NROM::new(
-                prg_rom_area,
-                chr_rom_area,
-                prg_ram_size,
-                eeprom_size,
-                has_battery,
-                file.header.flags1.get(Flags1Enum::NAME_TABLE_MIRROR),
-            )),
-            1 => Box::new(MMC1::new(
-                prg_rom_area,
-                chr_rom_area,
-                prg_ram_size,
-                eeprom_size,
-                has_battery,
-            )),
-            3 => Box::new(CNROM::new(
-                prg_rom_area,
-                chr_rom_area,
-                prg_ram_size,
-                eeprom_size,
-                has_battery,
-                file.header.flags1.get(Flags1Enum::NAME_TABLE_MIRROR),
-            )),
-            _ => panic!("Unsupported mapper {}", mapper_num),
-        }
+        mappers!(
+            file, 
+            (0, NROM), 
+            (1, MMC1), 
+            (3, CNROM)
+        )
     }
 }
 
