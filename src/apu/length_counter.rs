@@ -16,8 +16,9 @@ pub struct LengthCounter {
 }
 
 impl LengthCounter {
-    pub fn new() -> LengthCounter {
-        LengthCounter::default()
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn reload(&mut self) {
@@ -33,12 +34,12 @@ impl LengthCounter {
     pub fn load_value(&mut self, val: u8) -> NeedToRunFlag {
         self.reload_val = LENGTH_LOOKUP[(val >> 3) as usize];
         self.prev_value = self.counter;
-        return NeedToRunFlag(Some(true));
+        NeedToRunFlag(Some(true))
     }
 
     pub fn write_ctrl(&mut self, val: u8) -> NeedToRunFlag {
         self.new_halt_val = (val >> 5) & 1 == 1;
-        return NeedToRunFlag(Some(true));
+        NeedToRunFlag(Some(true))
     }
 
     pub fn clock(&mut self) {

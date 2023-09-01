@@ -65,7 +65,8 @@ impl APU {
         }
     }
 
-    pub fn read_status_trace(&self) -> u8 {
+    #[must_use]
+    pub const fn read_status_trace(&self) -> u8 {
         let mut status = 0;
         if self.pulse1.length.counter > 0 {
             status |= 0x1;
@@ -76,7 +77,7 @@ impl APU {
         if self.irq_pending {
             status |= 0x40;
         }
-        return status;
+        status
     }
 
     pub fn clock(&mut self) -> bool {
@@ -150,7 +151,7 @@ impl APU {
                 }
             };
 
-            let (signal, inc) = self.frame_counter.clock(self.irq_disabled, &mut cycles_to_run, callback);
+            let (signal, inc) = self.frame_counter.clock(self.irq_disabled, &mut cycles_to_run , callback);
             self.prev_cycle += inc as usize;
             match signal {
                 IRQSignal::Clear => self.irq_pending = false,
@@ -178,7 +179,7 @@ impl APU {
             status |= 0x40;
         }
         self.irq_pending = false;
-        return (status, IRQSignal::Clear);
+        (status, IRQSignal::Clear)
     }
 
     pub fn write_status(&mut self, val: u8) {
@@ -193,7 +194,7 @@ impl APU {
             self.irq_pending = false;
             return IRQSignal::Clear;
         }
-        return IRQSignal::None;
+        IRQSignal::None
     }
 
     fn output(&self) -> f32 {

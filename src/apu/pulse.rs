@@ -26,6 +26,7 @@ pub struct Pulse {
 }
 
 impl Pulse {
+    #[must_use]
     pub fn new(channel: AudioChannel) -> Self {
         Self {
             channel,
@@ -41,12 +42,13 @@ impl Pulse {
         }
     }
 
+    #[must_use]
     pub fn output(&self) -> u8 {
         if self.is_muted() {
             return 0;
         }
-        return (DUTY_CYCLES[self.duty_cycle as usize][self.duty_counter as usize] as u32
-            * self.get_volume()) as u8;
+        DUTY_CYCLES[self.duty_cycle as usize][self.duty_counter as usize]
+            * self.get_volume()
     }
 
     pub fn clock_quarter_frame(&mut self) {
@@ -84,7 +86,7 @@ impl Pulse {
         self.duty_cycle = (val >> 6) & 0x3;
         let flag = self.length.write_ctrl(val);
         self.envelope.write_ctrl(val);
-        return flag;
+        flag
     }
 
     pub fn write_sweep(&mut self, val: u8) {
@@ -99,18 +101,18 @@ impl Pulse {
     }
 
     pub fn write_timer_lo(&mut self, val: u8) {
-        self.set_period((self.real_period & 0xFF00) | val as u16)
+        self.set_period((self.real_period & 0xFF00) | u16::from(val));
     }
 
     pub fn write_timer_hi(&mut self, val: u8) -> NeedToRunFlag {
-        self.set_period((self.real_period & 0x00FF) | ((val as u16 & 0x7) << 8));
+        self.set_period((self.real_period & 0x00FF) | ((u16::from(val) & 0x7) << 8));
         self.duty_counter = 0;
         self.envelope.reset = true;
-        let mut flag = NeedToRunFlag(None);
         if self.length.enabled {
-            flag = self.length.load_value(val);
+            self.length.load_value(val)
+        } else {
+            NeedToRunFlag(None)
         }
-        return flag;
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
@@ -122,9 +124,9 @@ impl Pulse {
 
     pub fn clock(&mut self, target_cycle: u64) {
         let mut cycles_to_run = target_cycle - self.previous_cycle;
-        while cycles_to_run > self.timer as u64 {
-            cycles_to_run -= self.timer as u64 + 1;
-            self.previous_cycle += self.timer as u64 + 1;
+        while cycles_to_run > u64::from(self.timer) {
+            cycles_to_run -= u64::from(self.timer) + 1;
+            self.previous_cycle += u64::from(self.timer) + 1;
             self.duty_counter = (self.duty_counter.wrapping_sub(1)) & 0x07;
             self.timer = self.period;
         }
@@ -132,18 +134,18 @@ impl Pulse {
         self.previous_cycle = target_cycle;
     }
 
-    fn get_volume(&self) -> u32 {
+    fn get_volume(&self) -> u8 {
         if self.length.counter > 0 {
             if self.envelope.enabled {
-                return self.envelope.volume as u32;
+                return self.envelope.volume;
             }
-            return self.envelope.constant_volume as u32;
+            return self.envelope.constant_volume;
         }
-        return 0;
+        0
     }
 
-    fn is_muted(&self) -> bool {
-        return self.real_period < 8 || (!self.sweep.negate && self.sweep.target_period > 0x7ff);
+    const fn is_muted(&self) -> bool {
+        self.real_period < 8 || (!self.sweep.negate && self.sweep.target_period > 0x7ff)
     }
 
     fn set_period(&mut self, new_period: u16) {
@@ -155,12 +157,12 @@ impl Pulse {
     fn update_target_period(&mut self) {
         let shift_result = self.real_period >> self.sweep.shift;
         if self.sweep.negate {
-            self.sweep.target_period = (self.real_period - shift_result) as u32;
+            self.sweep.target_period = u32::from(self.real_period - shift_result);
             if self.channel == AudioChannel::Pulse1 {
                 self.sweep.target_period = self.sweep.target_period.wrapping_sub(1);
             }
         } else {
-            self.sweep.target_period = (self.real_period + shift_result) as u32;
+            self.sweep.target_period = u32::from(self.real_period + shift_result);
         }
     }
 }

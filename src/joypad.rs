@@ -52,6 +52,6 @@ impl Joypad {
         if self.button_idx > 7 {
             return 1;
         } 
-        return (self.buttons.bits() & (1 << self.button_idx)) >> self.button_idx;
+        self.buttons.bits() & (1 << self.button_idx) >> self.button_idx
     }
 }

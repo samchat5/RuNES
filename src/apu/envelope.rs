@@ -9,8 +9,8 @@ pub struct Envelope {
 }
 
 impl Envelope {
-    pub(crate) fn new() -> Envelope {
-        Envelope::default()
+    pub(crate) fn new() -> Self {
+        Self::default()
     }
 
     pub fn write_ctrl(&mut self, val: u8) {

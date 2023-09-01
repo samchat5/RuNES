@@ -17,7 +17,6 @@ pub struct CNROM {
     prg_rom_mode: PRGRomMode,
     mirroring: u8,
     nametables: [[u8; 0x400]; 2],
-
     bank_select: u8,
 }
 

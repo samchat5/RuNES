@@ -20,6 +20,6 @@ impl Config {
     }
 
     pub fn get_int<T: Into<i64> + From<i64>>(prop: &str, default: T) -> T {
-        CONF.get_int(prop).unwrap_or(default.into()).into()
+        CONF.get_int(prop).unwrap_or_else(|_| default.into()).into()
     }
 }

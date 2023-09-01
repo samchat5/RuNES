@@ -52,7 +52,7 @@ pub struct FrameCounter {
 impl Default for FrameCounter {
     fn default() -> Self {
         Self {
-            previous_cycle: 0 as i32,
+            previous_cycle: 0,
             step: 0,
             mode: Mode::FourStep,
             write_delay: 3,
@@ -72,7 +72,7 @@ impl FrameCounter {
         let cycles_ran;
         let mut signal = IRQSignal::None;
 
-        if self.previous_cycle + *cycles_to_run >= STEP_CYCLES[self.mode as usize][self.step] as i32
+        if self.previous_cycle + *cycles_to_run >= i32::from(STEP_CYCLES[self.mode as usize][self.step])
         {
             if !inhibit_irq && self.mode == Mode::FourStep && self.step >= 3 {
                 signal = IRQSignal::Set;
@@ -84,12 +84,10 @@ impl FrameCounter {
                 self.block_tick = 2;
             }
 
-            cycles_ran = if (STEP_CYCLES[self.mode as usize][self.step] as i32) < self.previous_cycle {
+            cycles_ran = if i32::from(STEP_CYCLES[self.mode as usize][self.step]) < self.previous_cycle {
                 0
             } else {
-                (STEP_CYCLES[self.mode as usize][self.step] as i32
-                    - self.previous_cycle)
-                    .abs() as u32
+                (i32::from(STEP_CYCLES[self.mode as usize][self.step]) - self.previous_cycle).unsigned_abs()
             };
 
             *cycles_to_run -= cycles_ran as i32;
@@ -107,13 +105,13 @@ impl FrameCounter {
             self.previous_cycle += cycles_ran as i32;
         }
 
-        if self.write_buffer.is_some() {
+        if let Some(wb) = self.write_buffer {
             self.write_delay -= 1;
             if self.write_delay == 0 {
-                self.mode = if self.write_buffer.unwrap() & 0x80 != 0 {
-                    Mode::FiveStep
-                } else {
+                self.mode = if wb & 0x80 == 0 {
                     Mode::FourStep
+                } else {
+                    Mode::FiveStep
                 };
 
                 self.write_delay = -1;
@@ -135,11 +133,11 @@ impl FrameCounter {
         (signal, cycles_ran)
     }
 
-    pub fn need_to_run(&self, cycles_to_run: u32) -> bool {
-        return self.write_buffer.is_some()
+    #[must_use] pub fn need_to_run(&self, cycles_to_run: u32) -> bool {
+        self.write_buffer.is_some()
             || self.block_tick > 0
             || (self.previous_cycle + cycles_to_run as i32)
-                >= (STEP_CYCLES[self.mode as usize][self.step] as i32) - 1;
+                >= i32::from(STEP_CYCLES[self.mode as usize][self.step]) - 1
     }
 
     pub fn write(&mut self, val: u8, cycle: usize) {
