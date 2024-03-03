@@ -1,5 +1,5 @@
-use crate::cpu::cpu_units::load_store::LoadStore;
-use crate::cpu::{Register, CPU};
+use crate::core::cpu::cpu_units::load_store::LoadStore;
+use crate::core::cpu::{Register, CPU};
 
 pub trait RegisterTransfer {
     fn transfer(&mut self, from: Register, to: Register);

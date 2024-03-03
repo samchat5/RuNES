@@ -4,8 +4,8 @@ use std::io::{self, Write};
 use bitflags::bitflags;
 
 use crate::config::Config;
-use crate::ppu::DMAFlag;
-use crate::{apu::frame_counter::IRQSignal, bus::Bus};
+use crate::core::ppu::DMAFlag;
+use crate::core::{apu::frame_counter::IRQSignal, bus::Bus};
 
 use self::{
     cpu_units::{
@@ -582,7 +582,9 @@ impl CPU<'_> {
 
     pub fn run_until_frame(&mut self) {
         let frame_num = self.bus.ppu.frame_count;
-        while self.bus.ppu.frame_count == frame_num && self.cycle_count < Config::get_int("max_cycles", i64::MAX) as u64 {
+        while self.bus.ppu.frame_count == frame_num
+            && self.cycle_count < Config::get_int("max_cycles", i64::MAX) as u64
+        {
             self.run();
         }
     }

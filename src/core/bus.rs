@@ -1,11 +1,11 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::apu::base_channel::AudioChannel;
-use crate::apu::frame_counter::IRQSignal;
-use crate::apu::APU;
-use crate::joypad::Joypad;
-use crate::mappers::{MapperFactory, SharedMapper};
-use crate::{ines_parser::File, ppu::PPU};
+use crate::core::apu::base_channel::AudioChannel;
+use crate::core::apu::frame_counter::IRQSignal;
+use crate::core::apu::APU;
+use crate::core::joypad::Joypad;
+use crate::core::mappers::{MapperFactory, SharedMapper};
+use crate::{core::ppu::PPU, ines_parser::File};
 
 const RAM_SIZE: usize = 0x0800;
 const RAM_START: u16 = 0x0000;

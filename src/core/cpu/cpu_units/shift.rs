@@ -1,4 +1,4 @@
-use crate::cpu::{AddressingMode, Register, Status, CPU};
+use crate::core::cpu::{AddressingMode, Register, Status, CPU};
 
 use super::{arithmetic::Arithmetic, logical::Logical};
 

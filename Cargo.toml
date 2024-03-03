@@ -16,6 +16,7 @@ rand = "0.8.5"
 sdl2 = "0.35.2"
 itertools = "0.10.5"
 config = "0.13.3"
+eframe = "0.23.0"
 
 [profile.dev]
 opt-level = 0

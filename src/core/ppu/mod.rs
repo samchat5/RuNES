@@ -1,6 +1,6 @@
-use crate::frame::Frame;
-use crate::mappers::SharedMapper;
-use crate::ppu::palettes::Palette;
+use crate::core::frame::Frame;
+use crate::core::mappers::SharedMapper;
+use crate::core::ppu::palettes::Palette;
 
 use self::registers::{control::Control, mask::Mask, status::Status};
 

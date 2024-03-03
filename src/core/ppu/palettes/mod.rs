@@ -9,7 +9,7 @@ pub struct Palette {
 
 impl Default for Palette {
     fn default() -> Self {
-        Self::from_file("src/ppu/palettes/ntscpalette.pal")
+        Self::from_file("src/core/ppu/palettes/ntscpalette.pal")
     }
 }
 

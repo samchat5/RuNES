@@ -9,7 +9,6 @@ pub mod pulse;
 pub mod sweep;
 pub mod triangle;
 
-use crate::apu::mixer::mixer_value;
 use dmc::DMC;
 use frame_counter::FrameCounter;
 use noise::Noise;
@@ -19,6 +18,7 @@ use triangle::Triangle;
 use self::base_channel::AudioChannel;
 use self::frame_counter::{FrameType, IRQSignal};
 use self::length_counter::NeedToRunFlag;
+use self::mixer::mixer_value;
 
 const SAMPLE_RATE: f64 = 44_100.0;
 const CPU_CLOCK_SPEED: f64 = 21_477_272.0 / 12.0;
@@ -151,7 +151,9 @@ impl APU {
                 }
             };
 
-            let (signal, inc) = self.frame_counter.clock(self.irq_disabled, &mut cycles_to_run , callback);
+            let (signal, inc) =
+                self.frame_counter
+                    .clock(self.irq_disabled, &mut cycles_to_run, callback);
             self.prev_cycle += inc as usize;
             match signal {
                 IRQSignal::Clear => self.irq_pending = false,
@@ -188,7 +190,7 @@ impl APU {
     }
 
     pub fn write_frame_counter(&mut self, val: u8) -> IRQSignal {
-         self.frame_counter.write(val, self.cycle);
+        self.frame_counter.write(val, self.cycle);
         self.irq_disabled = val & 0x40 != 0;
         if self.irq_disabled {
             self.irq_pending = false;

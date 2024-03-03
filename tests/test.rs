@@ -17,8 +17,8 @@ macro_rules! integration_tests {
 }
 
 mod tests {
-    use nes::bus::Bus;
-    use nes::cpu::CPU;
+    use nes::core::bus::Bus;
+    use nes::core::cpu::CPU;
     use nes::ines_parser::File;
 
     integration_tests! {
@@ -62,7 +62,7 @@ mod tests {
         m1_p128k_c128k_s8k : ("tests/holy-mapperel/M1_P128K_C128K_S8K.nes", 2442022, 17191105395120435064);
         m1_p128k_c128k_w8k : ("tests/holy-mapperel/M1_P128K_C128K_W8K.nes", 2449514, 2543050301529417715);
         m1_p128k_cr8k: ("tests/holy-mapperel/M1_P128K_CR8K.nes", 2293119, 3560412538058700980);
-     
+
         m3_p32k_c32k_h : ("tests/holy-mapperel/M3_P32K_C32K_H.nes", 148911, 7333994192358773729);
 
         // APU TESTS -------------------------------------------------------------------------------

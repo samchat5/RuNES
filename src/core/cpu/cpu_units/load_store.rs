@@ -1,4 +1,4 @@
-use crate::cpu::{Register, CPU};
+use crate::core::cpu::{Register, CPU};
 
 pub trait LoadStore {
     fn ld(&mut self, reg: Register);

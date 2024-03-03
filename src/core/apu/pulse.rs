@@ -1,6 +1,5 @@
-use crate::apu::base_channel::AudioChannel;
-
 use super::{
+    base_channel::AudioChannel,
     envelope::Envelope,
     length_counter::{LengthCounter, NeedToRunFlag},
     sweep::Sweep,
@@ -47,8 +46,7 @@ impl Pulse {
         if self.is_muted() {
             return 0;
         }
-        DUTY_CYCLES[self.duty_cycle as usize][self.duty_counter as usize]
-            * self.get_volume()
+        DUTY_CYCLES[self.duty_cycle as usize][self.duty_counter as usize] * self.get_volume()
     }
 
     pub fn clock_quarter_frame(&mut self) {

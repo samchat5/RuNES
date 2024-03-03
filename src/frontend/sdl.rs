@@ -1,8 +1,8 @@
-use crate::bus::Bus;
 use crate::config::Config;
-use crate::cpu::CPU;
+use crate::core::bus::Bus;
+use crate::core::cpu::CPU;
+use crate::core::joypad::Buttons;
 use crate::ines_parser::File;
-use crate::joypad::Buttons;
 use lazy_static::lazy_static;
 use sdl2::audio::{AudioQueue, AudioSpecDesired};
 use sdl2::event::Event;

@@ -1,4 +1,4 @@
-use crate::mappers::{Mapper, Mirroring};
+use crate::core::mappers::{Mapper, Mirroring};
 
 enum PRGMode {
     PRG16k,
@@ -93,7 +93,7 @@ impl MMC1 {
         prg_ram_size: usize,
         eeprom_size: usize,
         has_battery: bool,
-        _mirroring: u8
+        _mirroring: u8,
     ) -> Self {
         let mut prg_ram_size = prg_ram_size;
         if prg_ram_size == 0 && eeprom_size > 0 {

@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 
-use crate::cpu::AddressingMode;
+use crate::core::cpu::AddressingMode;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Op<'a> {

@@ -1,4 +1,4 @@
-use crate::cpu::{AddressingMode, CPU};
+use crate::core::cpu::{AddressingMode, CPU};
 
 pub trait Jumps {
     fn jmp_to_addr(&mut self, addr: u16);

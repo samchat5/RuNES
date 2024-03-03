@@ -1,4 +1,4 @@
-use crate::cpu::{Status, CPU};
+use crate::core::cpu::{Status, CPU};
 
 pub trait Branches {
     fn branch_relative(&mut self, flag: Status, set: bool);

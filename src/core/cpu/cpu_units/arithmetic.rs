@@ -1,4 +1,4 @@
-use crate::cpu::{Register, Status, CPU};
+use crate::core::cpu::{Register, Status, CPU};
 
 pub enum ArithOp {
     ADC,
