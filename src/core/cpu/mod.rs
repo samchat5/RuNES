@@ -574,10 +574,12 @@ impl CPU<'_> {
         self.bus.ppu.curr_frame.get_hash()
     }
 
-    pub fn run_for_cycles(&mut self, cycles: u64) {
-        while self.cycle_count < cycles {
+    pub fn run_for_cycles(&mut self, cycles: u64) -> bool {
+        let frame_num = self.bus.ppu.frame_count;
+        for _ in 0..cycles {
             self.run();
         }
+        frame_num == self.bus.ppu.frame_count
     }
 
     pub fn run_until_frame(&mut self) {

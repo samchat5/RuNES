@@ -15,14 +15,11 @@ use noise::Noise;
 use pulse::Pulse;
 use triangle::Triangle;
 
+use crate::frontend::blip_buf::BlipBuf;
+
 use self::base_channel::AudioChannel;
 use self::frame_counter::{FrameType, IRQSignal};
 use self::length_counter::NeedToRunFlag;
-use self::mixer::mixer_value;
-
-const SAMPLE_RATE: f64 = 44_100.0;
-const CPU_CLOCK_SPEED: f64 = 21_477_272.0 / 12.0;
-const CLOCKS_PER_SAMPLE: f64 = CPU_CLOCK_SPEED / SAMPLE_RATE;
 
 pub struct APU {
     pulse1: Pulse,
@@ -31,7 +28,7 @@ pub struct APU {
     _noise: Noise,
     _dmc: DMC,
     frame_counter: FrameCounter,
-    output_buffer: Vec<f32>,
+    pub output_buffer: BlipBuf<65536>,
     irq_pending: bool,
     irq_disabled: bool,
     cycle: usize,
@@ -46,9 +43,12 @@ impl Default for APU {
 }
 
 impl APU {
+    pub const CLOCK_RATE: f64 = 1789772.7272;
+    const DEFAULT_SAMPLE_RATE: f64 = 48000.;
+
     #[must_use]
     pub fn new() -> Self {
-        let output_buffer = Vec::new();
+        println!("here apu");
         Self {
             pulse1: Pulse::new(AudioChannel::Pulse1),
             pulse2: Pulse::new(AudioChannel::Pulse2),
@@ -56,7 +56,7 @@ impl APU {
             _noise: Noise::default(),
             _dmc: DMC::default(),
             frame_counter: FrameCounter::default(),
-            output_buffer,
+            output_buffer: BlipBuf::new(Self::CLOCK_RATE, Self::DEFAULT_SAMPLE_RATE),
             irq_pending: false,
             irq_disabled: false,
             cycle: 0,
@@ -81,16 +81,9 @@ impl APU {
     }
 
     pub fn clock(&mut self) -> bool {
-        let s1 = (self.cycle as f64 / CLOCKS_PER_SAMPLE).floor();
         self.cycle += 1;
-
-        let s2 = (self.cycle as f64 / CLOCKS_PER_SAMPLE).floor();
         self.run();
-
-        if (s1 - s2).abs() > f64::EPSILON {
-            self.output_buffer.push(self.output());
-        }
-
+        self.output();
         self.irq_pending
     }
 
@@ -199,18 +192,11 @@ impl APU {
         IRQSignal::None
     }
 
-    fn output(&self) -> f32 {
-        let pulse1 = self.pulse1.output();
-        let pulse2 = self.pulse2.output();
-        mixer_value(pulse1, pulse2, 0.0, 0.0, 0.0)
-    }
-
-    #[must_use]
-    pub fn get_buffer(&self) -> &[f32] {
-        &self.output_buffer
-    }
-
-    pub fn clear_buffer(&mut self) {
-        self.output_buffer.clear();
+    fn output(&mut self) {
+        let pulse1 = self.pulse1.output() as f64;
+        let pulse2 = self.pulse2.output() as f64;
+        let pulse_out = pulse1 + pulse2;
+        let square_volume = (477600. / (8128.0 / pulse_out + 100.0)) as i32;
+        self.output_buffer.add_sample(square_volume);
     }
 }

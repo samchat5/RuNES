@@ -26,7 +26,7 @@ pub struct Bus {
 impl Bus {
     pub fn new(file: &File) -> Bus {
         let mapper = Rc::new(RefCell::new(MapperFactory::from_file(file)));
-
+        println!("here bus");
         Bus {
             cpu_ram: [0; RAM_SIZE],
             mapper: mapper.clone(),

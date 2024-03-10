@@ -1,18 +1,23 @@
 use crate::config::Config;
+use crate::core::apu;
 use crate::core::bus::Bus;
 use crate::core::cpu::CPU;
 use crate::core::joypad::Buttons;
 use crate::ines_parser::File;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{SampleRate, StreamConfig, StreamError, SupportedStreamConfig};
+use crossbeam::channel::{Receiver, Sender};
 use lazy_static::lazy_static;
-use sdl2::audio::{AudioQueue, AudioSpecDesired};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
+use sdl2::libc::wait;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::render::{Texture, TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use sdl2::EventPump;
 use std::collections::HashMap;
-use std::time::SystemTime;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 
 struct TextureManager<'a> {
     texture: Texture<'a>,
@@ -45,11 +50,15 @@ lazy_static! {
     });
 }
 
+const FRAME_DURATION: Duration = Duration::from_nanos(16_666_667);
+
 pub struct SDLApp {
     canvas: WindowCanvas,
     event_pump: EventPump,
-    queue: AudioQueue<f32>,
     cpu: CPU<'static>,
+    samples: Vec<i16>,
+    audio_send: Sender<i16>,
+    stream: cpal::Stream,
 }
 
 impl SDLApp {
@@ -67,27 +76,23 @@ impl SDLApp {
         canvas.set_scale(scale_x, scale_y).unwrap();
 
         let event_pump = sdl_context.event_pump().unwrap();
+        let mut cpu = CPU::new(Bus::new(&rom));
 
-        let audio = sdl_context.audio().unwrap();
-        let queue = audio
-            .open_queue(
-                None,
-                &AudioSpecDesired {
-                    freq: Some(44_100),
-                    channels: Some(1),
-                    samples: Some(4096),
-                },
-            )
-            .unwrap();
-        queue.resume();
+        let (audio_send, audio_recv) = crossbeam::channel::bounded::<i16>(2048);
+        let (stream, sample_rate) = Self::setup_audio(audio_recv);
 
-        let cpu = CPU::new(Bus::new(&rom));
+        cpu.bus
+            .apu
+            .output_buffer
+            .set_rates(apu::APU::CLOCK_RATE, sample_rate.0 as f64);
 
         Self {
             cpu,
             canvas,
             event_pump,
-            queue,
+            samples: Vec::with_capacity(16),
+            audio_send,
+            stream,
         }
     }
 
@@ -136,34 +141,75 @@ impl SDLApp {
         let texture_creator = self.canvas.texture_creator();
         let mut texture_manager = TextureManager::new(&texture_creator);
         let texture = &mut texture_manager.texture;
-        let mut frame_start = SystemTime::now();
 
         loop {
             self.handle_keyevent();
 
-            let force = self.queue.size() < 44100 / 2;
-            if force || frame_start.elapsed().unwrap() > std::time::Duration::from_micros(16666) {
-                self.execute(texture);
-                frame_start = SystemTime::now();
+            let deadline = Instant::now() + FRAME_DURATION;
+            self.execute(texture);
+            let now = Instant::now();
+            if now > deadline {
+                println!("MISSED DEADLINE");
+            } else {
+                let delta = deadline.duration_since(now);
+                sleep(delta);
             }
         }
     }
 
-    fn emulate(&mut self, texture: &mut Texture) {
+    fn execute(&mut self, texture: &mut Texture) {
+        // Run CPU
         self.cpu.run_until_frame();
+
+        // Audio
+        self.cpu.bus.apu.output_buffer.end_frame(&mut self.samples);
+        for sample in self.samples.iter() {
+            self.audio_send.try_send(*sample).ok();
+        }
+        self.stream.play().unwrap();
+        self.samples.clear();
+
+        // Render
         texture
             .update(None, &self.cpu.bus.ppu.curr_frame.image, 256 * 3)
             .unwrap();
+        self.canvas.copy(texture, None, None).unwrap();
+        self.canvas.present();
     }
 
-    fn execute(&mut self, texture: &mut Texture) {
-        self.emulate(texture);
-        let apu = &mut self.cpu.bus.apu;
-        self.queue.queue_audio(apu.get_buffer()).unwrap();
-        apu.clear_buffer();
+    fn setup_audio(audio_recv: Receiver<i16>) -> (cpal::Stream, SampleRate) {
+        let host = cpal::default_host();
+        let device = host.default_output_device().unwrap();
 
-        self.canvas.copy(texture, None, None).unwrap();
+        let default_config: StreamConfig = device.default_output_config().unwrap().into();
+        let sample_rate = default_config.sample_rate;
+        let channels = default_config.channels;
 
-        self.canvas.present();
+        let stream = device
+            .build_output_stream(
+                &default_config,
+                move |buf: &mut [i16], _: &cpal::OutputCallbackInfo| {
+                    SDLApp::stream_callback(buf, audio_recv.clone(), channels);
+                },
+                SDLApp::stream_err,
+                None,
+            )
+            .unwrap();
+        (stream, sample_rate)
+    }
+
+    fn stream_callback(buf: &mut [i16], audio_recv: Receiver<i16>, channels: u16) {
+        let requested = buf.len();
+        let sample_iter = audio_recv.try_iter().take(requested / channels as usize);
+
+        let mut i = 0;
+        for sample in sample_iter {
+            buf[i..(i + channels as usize)].fill(sample);
+            i += channels as usize;
+        }
+    }
+
+    fn stream_err(e: StreamError) {
+        dbg!(e);
     }
 }

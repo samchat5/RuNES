@@ -17,6 +17,10 @@ sdl2 = "0.35.2"
 itertools = "0.10.5"
 config = "0.13.3"
 eframe = "0.23.0"
+bincode = "2.0.0-rc.1"
+cpal = "0.15.2"
+crossbeam = "0.8.4"
+anyhow = "1.0.80"
 
 [profile.dev]
 opt-level = 0
