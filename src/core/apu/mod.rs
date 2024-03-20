@@ -3,7 +3,6 @@ pub mod dmc;
 pub mod envelope;
 pub mod frame_counter;
 pub mod length_counter;
-pub mod mixer;
 pub mod noise;
 pub mod pulse;
 pub mod sweep;
@@ -26,7 +25,7 @@ pub struct APU {
     pulse2: Pulse,
     _triangle: Triangle,
     _noise: Noise,
-    _dmc: DMC,
+    pub dmc: DMC,
     frame_counter: FrameCounter,
     pub output_buffer: BlipBuf<65536>,
     irq_pending: bool,
@@ -34,6 +33,7 @@ pub struct APU {
     cycle: usize,
     need_to_run: bool,
     prev_cycle: usize,
+    need_dmc_transfer: bool,
 }
 
 impl Default for APU {
@@ -48,13 +48,12 @@ impl APU {
 
     #[must_use]
     pub fn new() -> Self {
-        println!("here apu");
         Self {
             pulse1: Pulse::new(AudioChannel::Pulse1),
             pulse2: Pulse::new(AudioChannel::Pulse2),
             _triangle: Triangle::default(),
             _noise: Noise::default(),
-            _dmc: DMC::default(),
+            dmc: DMC::default(),
             frame_counter: FrameCounter::default(),
             output_buffer: BlipBuf::new(Self::CLOCK_RATE, Self::DEFAULT_SAMPLE_RATE),
             irq_pending: false,
@@ -62,6 +61,7 @@ impl APU {
             cycle: 0,
             need_to_run: false,
             prev_cycle: 0,
+            need_dmc_transfer: false,
         }
     }
 
@@ -80,11 +80,12 @@ impl APU {
         status
     }
 
-    pub fn clock(&mut self) -> bool {
+    pub fn clock(&mut self) -> (bool, bool) {
         self.cycle += 1;
+        self.need_to_run();
         self.run();
         self.output();
-        self.irq_pending
+        (self.irq_pending, self.need_dmc_transfer)
     }
 
     pub fn write_ctrl(&mut self, channel: &AudioChannel, val: u8) {
@@ -129,6 +130,19 @@ impl APU {
         }
     }
 
+    fn need_to_run(&mut self) -> bool {
+        let (should_start_dmc_transfer, need_to_run) = self.dmc.need_to_run();
+        self.need_dmc_transfer = should_start_dmc_transfer;
+        if need_to_run || self.need_to_run {
+            self.need_to_run = false;
+            return true;
+        }
+
+        let cycles_to_run = self.cycle - self.prev_cycle;
+        self.frame_counter.need_to_run(cycles_to_run as u32)
+            || self.dmc.irq_pending(cycles_to_run as u64)
+    }
+
     fn run(&mut self) {
         let mut cycles_to_run = (self.cycle - self.prev_cycle) as i32;
 
@@ -159,6 +173,7 @@ impl APU {
 
             self.pulse1.clock(self.prev_cycle as u64);
             self.pulse2.clock(self.prev_cycle as u64);
+            self.need_dmc_transfer = self.dmc.clock(self.prev_cycle as u64);
         }
     }
 
@@ -173,13 +188,37 @@ impl APU {
         if self.irq_pending {
             status |= 0x40;
         }
+        if self.dmc.bytes_remaining > 0 {
+            status |= 0x10;
+        }
         self.irq_pending = false;
         (status, IRQSignal::Clear)
     }
 
-    pub fn write_status(&mut self, val: u8) {
+    pub fn write_dmc_ctrl(&mut self, data: u8) {
+        self.run();
+        self.dmc.write_ctrl(data);
+    }
+
+    pub fn write_dmc_load(&mut self, data: u8) {
+        self.run();
+        self.dmc.write_load(data);
+    }
+
+    pub fn write_dmc_addr(&mut self, data: u8) {
+        self.run();
+        self.dmc.write_addr(data);
+    }
+
+    pub fn write_dmc_lc(&mut self, data: u8) {
+        self.run();
+        self.dmc.write_lc(data);
+    }
+
+    pub fn write_status(&mut self, val: u8, cpu_cycle: u64) {
         self.pulse1.set_enabled(val & 0x1 != 0);
         self.pulse2.set_enabled(val & 0x2 != 0);
+        self.dmc.set_enabled(val & 0x10 != 0, cpu_cycle)
     }
 
     pub fn write_frame_counter(&mut self, val: u8) -> IRQSignal {

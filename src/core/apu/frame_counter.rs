@@ -72,7 +72,8 @@ impl FrameCounter {
         let cycles_ran;
         let mut signal = IRQSignal::None;
 
-        if self.previous_cycle + *cycles_to_run >= i32::from(STEP_CYCLES[self.mode as usize][self.step])
+        if self.previous_cycle + *cycles_to_run
+            >= i32::from(STEP_CYCLES[self.mode as usize][self.step])
         {
             if !inhibit_irq && self.mode == Mode::FourStep && self.step >= 3 {
                 signal = IRQSignal::Set;
@@ -84,11 +85,13 @@ impl FrameCounter {
                 self.block_tick = 2;
             }
 
-            cycles_ran = if i32::from(STEP_CYCLES[self.mode as usize][self.step]) < self.previous_cycle {
-                0
-            } else {
-                (i32::from(STEP_CYCLES[self.mode as usize][self.step]) - self.previous_cycle).unsigned_abs()
-            };
+            cycles_ran =
+                if i32::from(STEP_CYCLES[self.mode as usize][self.step]) < self.previous_cycle {
+                    0
+                } else {
+                    (i32::from(STEP_CYCLES[self.mode as usize][self.step]) - self.previous_cycle)
+                        .unsigned_abs()
+                };
 
             *cycles_to_run -= cycles_ran as i32;
 
@@ -133,7 +136,7 @@ impl FrameCounter {
         (signal, cycles_ran)
     }
 
-    #[must_use] pub fn need_to_run(&self, cycles_to_run: u32) -> bool {
+    pub fn need_to_run(&self, cycles_to_run: u32) -> bool {
         self.write_buffer.is_some()
             || self.block_tick > 0
             || (self.previous_cycle + cycles_to_run as i32)

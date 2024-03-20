@@ -1,6 +1,9 @@
 use sdl2::pixels::Color;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::path::Path;
+use image::{ImageResult, save_buffer};
+use image::ColorType;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Frame {
@@ -33,5 +36,9 @@ impl Frame {
         let mut hasher = DefaultHasher::new();
         self.image.hash(&mut hasher);
         hasher.finish()
+    }
+
+    pub fn save_buffer(&self, path: impl AsRef<Path>) -> ImageResult<()> {
+        save_buffer(path, &self.image, 256, 240, ColorType::Rgb8)
     }
 }

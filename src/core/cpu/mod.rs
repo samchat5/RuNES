@@ -103,7 +103,7 @@ pub struct CPU<'a> {
     start_clock_count: u8,
     end_clock_count: u8,
     master_clock: u64,
-    cycle_count: u64,
+    pub cycle_count: u64,
 
     need_nmi: bool,
     prev_need_nmi: bool,
@@ -117,6 +117,7 @@ pub struct CPU<'a> {
     sprite_dma_transfer: bool,
     need_dummy_read: bool,
     sprite_dma_offset: u8,
+    dmc_dma_running: bool,
 
     phantom: std::marker::PhantomData<&'a ()>,
 }
@@ -152,6 +153,7 @@ impl CPU<'_> {
             need_dummy_read: false,
             sprite_dma_offset: 0,
             irq_mask: 0,
+            dmc_dma_running: false,
             phantom: std::marker::PhantomData,
         }
     }
@@ -220,14 +222,31 @@ impl CPU<'_> {
             let mut read_val = 0u8;
             let skip_dummy_reads = addr == 0x4016 || addr == 0x4017;
 
-            while self.sprite_dma_transfer {
+            while self.sprite_dma_transfer || self.dmc_dma_running {
                 if self.cycle_count & 0x01 == 0 {
-                    self.process_cycle();
-                    read_val =
-                        self.read(self.sprite_dma_offset as u16 * 0x100 + sprite_read_addr as u16);
-                    self.end_cpu_cycle(true);
-                    sprite_read_addr = sprite_read_addr.wrapping_add(1);
-                    sprite_dma_counter += 1;
+                    if self.dmc_dma_running && !self.need_halt && !self.need_dummy_read {
+                        self.process_cycle();
+                        read_val = self.read(self.bus.apu.dmc.current_addr);
+                        self.end_cpu_cycle(true);
+                        match self.bus.apu.dmc.set_dmc_read_buffer(read_val) {
+                            IRQSignal::Set => self.irq_flag = IRQSource::DMC,
+                            _ => {}
+                        }
+                        self.dmc_dma_running = false;
+                    } else if self.sprite_dma_transfer {
+                        self.process_cycle();
+                        read_val = self
+                            .read(self.sprite_dma_offset as u16 * 0x100 + sprite_read_addr as u16);
+                        self.end_cpu_cycle(true);
+                        sprite_read_addr = sprite_read_addr.wrapping_add(1);
+                        sprite_dma_counter += 1;
+                    } else {
+                        self.process_cycle();
+                        if !skip_dummy_reads {
+                            self.read(addr);
+                        }
+                        self.end_cpu_cycle(true);
+                    }
                 } else if self.sprite_dma_transfer && sprite_dma_counter & 0x01 != 0 {
                     self.process_cycle();
                     self.write(0x2004, read_val);
@@ -529,9 +548,20 @@ impl CPU<'_> {
         } as u64;
         self.cycle_count = self.cycle_count.wrapping_add(1);
         self.run_to(self.master_clock - self.ppu_offset as u64);
-        if self.bus.apu.clock() {
+
+        let (irq_pending, needs_dmc_transfer) = self.bus.apu.clock();
+        if irq_pending {
             self.irq_flag.set(IRQSource::FRAME_COUNTER, true);
         }
+        if needs_dmc_transfer {
+            self.start_dmc_transfer();
+        }
+    }
+
+    fn start_dmc_transfer(&mut self) {
+        self.dmc_dma_running = true;
+        self.need_dummy_read = true;
+        self.need_halt = true;
     }
 
     fn end_cpu_cycle(&mut self, is_read: bool) {
@@ -574,12 +604,10 @@ impl CPU<'_> {
         self.bus.ppu.curr_frame.get_hash()
     }
 
-    pub fn run_for_cycles(&mut self, cycles: u64) -> bool {
-        let frame_num = self.bus.ppu.frame_count;
-        for _ in 0..cycles {
+    pub fn run_for_cycles(&mut self, cycles: u64) {
+        while cycles != self.cycle_count {
             self.run();
         }
-        frame_num == self.bus.ppu.frame_count
     }
 
     pub fn run_until_frame(&mut self) {

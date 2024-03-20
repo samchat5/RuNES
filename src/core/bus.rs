@@ -26,7 +26,6 @@ pub struct Bus {
 impl Bus {
     pub fn new(file: &File) -> Bus {
         let mapper = Rc::new(RefCell::new(MapperFactory::from_file(file)));
-        println!("here bus");
         Bus {
             cpu_ram: [0; RAM_SIZE],
             mapper: mapper.clone(),
@@ -105,7 +104,7 @@ impl Bus {
         (val, signal)
     }
 
-    fn execute_apu_io_write(&mut self, addr: u16, data: u8, _cpu_cycle: u64) -> IRQSignal {
+    fn execute_apu_io_write(&mut self, addr: u16, data: u8, cpu_cycle: u64) -> IRQSignal {
         let mapped_addr = (addr - APU_IO_START) % 0x1F;
         let mut signal = IRQSignal::None;
         match mapped_addr {
@@ -117,9 +116,13 @@ impl Bus {
             0x05 => self.apu.write_sweep(&AudioChannel::Pulse2, data),
             0x06 => self.apu.write_timer_lo(&AudioChannel::Pulse2, data),
             0x07 => self.apu.write_timer_hi(&AudioChannel::Pulse2, data),
-            0x08..=0x13 => {}
+            0x08..=0x0F => {}
+            0x10 => self.apu.write_dmc_ctrl(data),
+            0x11 => self.apu.write_dmc_load(data),
+            0x12 => self.apu.write_dmc_addr(data),
+            0x13 => self.apu.write_dmc_lc(data),
             0x14 => self.ppu.write_oamdma(data),
-            0x15 => self.apu.write_status(data),
+            0x15 => self.apu.write_status(data, cpu_cycle),
             0x16 => self.joypad.write(data),
             0x17 => signal = self.apu.write_frame_counter(data),
             _ => unreachable!(),

@@ -1,3 +1,2 @@
 enable_logging = false
 logging_path = "log.log"
-# max_cycles = 
