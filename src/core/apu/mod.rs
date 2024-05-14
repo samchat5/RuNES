@@ -82,7 +82,7 @@ impl APU {
 
     pub fn clock(&mut self) -> (bool, bool) {
         self.cycle += 1;
-        self.need_to_run();
+        // self.need_to_run();
         self.run();
         self.output();
         (self.irq_pending, self.need_dmc_transfer)
@@ -128,19 +128,6 @@ impl APU {
         if let Some(f) = flag.0 {
             self.need_to_run = f;
         }
-    }
-
-    fn need_to_run(&mut self) -> bool {
-        let (should_start_dmc_transfer, need_to_run) = self.dmc.need_to_run();
-        self.need_dmc_transfer = should_start_dmc_transfer;
-        if need_to_run || self.need_to_run {
-            self.need_to_run = false;
-            return true;
-        }
-
-        let cycles_to_run = self.cycle - self.prev_cycle;
-        self.frame_counter.need_to_run(cycles_to_run as u32)
-            || self.dmc.irq_pending(cycles_to_run as u64)
     }
 
     fn run(&mut self) {

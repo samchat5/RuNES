@@ -679,7 +679,7 @@ impl PPU {
     }
 
     pub fn write_ppumask(&mut self, val: u8) {
-        self.mask.write(val);
+        self.mask = Mask::from_bits(val).unwrap();
         if self.rendering_enabled
             != (self.mask.contains(Mask::SHOW_BACKGROUND) || self.mask.contains(Mask::SHOW_SPRITES))
         {
@@ -702,7 +702,7 @@ impl PPU {
     }
 
     pub fn write_ppuctrl(&mut self, val: u8) {
-        self.ctrl.write(val);
+        self.ctrl = Control::from_bits(val).unwrap();
         let name_table = self.ctrl.bits() & 0x03;
         self.temp_vram_addr = self.temp_vram_addr & !0x0c00 | (name_table as u16) << 10;
         if !self.ctrl.contains(Control::NMI) {
@@ -731,7 +731,7 @@ impl PPU {
 
     fn read_palette_ram(&self, addr: u16) -> u8 {
         let mut addr = addr & 0x1f;
-        if vec![0x10, 0x14, 0x18, 0x1c].contains(&addr) {
+        if [0x10, 0x14, 0x18, 0x1c].contains(&addr) {
             addr &= !0x10;
         }
         self.palette[addr as usize]
@@ -739,7 +739,7 @@ impl PPU {
 
     pub fn read_ppudata_trace(&self, addr: usize) -> u8 {
         match addr {
-            0x0000..=0x1fff => self.mapper.borrow().read_chr_rom(addr as u16),
+            0x0000..=0x1fff => self.mapper.lock().unwrap().read_chr_rom(addr as u16),
             0x2000 => self.ctrl.bits(),
             0x2001 => self.mask.bits(),
             0x2002 => self.status,
@@ -748,7 +748,7 @@ impl PPU {
             0x2005 => self.x_scroll,
             0x2006 => self.temp_vram_addr as u8,
             0x2007 => self.memory_read_buffer,
-            0x2008..=0x2fff => self.mapper.borrow().read_nametable(addr as u16),
+            0x2008..=0x2fff => self.mapper.lock().unwrap().read_nametable(addr as u16),
             0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => self.palette[addr - 0x3f10],
             0x3f00..=0x3fff => self.palette[(addr - 0x3f00) % 0x20],
             _ => panic!("Invalid address {:#X}", addr),
@@ -856,8 +856,8 @@ impl PPU {
     fn write_vram(&mut self, addr: u16, val: u8) {
         self.set_bus_address(addr);
         match addr {
-            0x0000..=0x1fff => self.mapper.borrow_mut().write_chr_rom(addr, val),
-            0x2000..=0x3eff => self.mapper.borrow_mut().write_nametable(addr, val),
+            0x0000..=0x1fff => self.mapper.lock().unwrap().write_chr_rom(addr, val),
+            0x2000..=0x3eff => self.mapper.lock().unwrap().write_nametable(addr, val),
             0x3f00..=0x3fff => self.write_palette_ram(addr, val),
             _ => panic!("Invalid address {:#X}", addr),
         }
@@ -919,9 +919,9 @@ impl PPU {
     fn read_vram(&mut self, addr: u16) -> u8 {
         self.set_bus_address(addr);
         match addr {
-            0x0000..=0x1fff => self.mapper.borrow().read_chr_rom(addr),
-            0x2000..=0x2fff => self.mapper.borrow().read_nametable(addr),
-            0x3000..=0x3fff => self.mapper.borrow().read_nametable(addr - 0x1000),
+            0x0000..=0x1fff => self.mapper.lock().unwrap().read_chr_rom(addr),
+            0x2000..=0x2fff => self.mapper.lock().unwrap().read_nametable(addr),
+            0x3000..=0x3fff => self.mapper.lock().unwrap().read_nametable(addr - 0x1000),
             _ => panic!("Invalid address {:#X}", addr),
         }
     }

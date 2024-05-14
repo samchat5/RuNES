@@ -51,7 +51,7 @@ impl Joypad {
     pub fn read_trace(&self) -> u8 {
         if self.button_idx > 7 {
             return 1;
-        } 
+        }
         self.buttons.bits() & (1 << self.button_idx) >> self.button_idx
     }
 }

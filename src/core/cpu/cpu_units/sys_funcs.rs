@@ -33,7 +33,7 @@ impl SysFuncs for CPU<'_> {
 
     fn rti(&mut self) {
         self.dummy_read();
-        self.status.bits = self.pop();
+        self.status = Status::from_bits(self.pop()).unwrap();
         self.pc = self.pop_word();
     }
 

@@ -4,7 +4,7 @@ macro_rules! integration_tests {
             #[test]
             fn $name() {
                 let (file, frames, hash) = $value;
-                let rom = File::new(file);
+                let rom = File::new(Path::new(file).to_path_buf());
                 let bus = Bus::new(&rom);
                 let mut cpu = CPU::new(bus);
                 cpu.reset();
@@ -22,6 +22,7 @@ mod tests {
     use nes::core::bus::Bus;
     use nes::core::cpu::CPU;
     use nes::ines_parser::File;
+    use std::path::Path;
 
     integration_tests! {
         // CPU TESTS -------------------------------------------------------------------------------

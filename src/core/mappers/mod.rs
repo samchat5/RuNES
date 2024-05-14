@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::sync::{Arc, Mutex};
 
 use crate::ines_parser::{File, Flags1Enum};
 
@@ -16,7 +16,7 @@ pub enum Mirroring {
     SingleScreenB,
 }
 
-pub type SharedMapper = Rc<RefCell<Box<dyn Mapper>>>;
+pub type SharedMapper = Arc<Mutex<Box<dyn Mapper + Send>>>;
 
 pub struct MapperFactory;
 
@@ -49,13 +49,8 @@ macro_rules! mappers {
 }
 
 impl MapperFactory {
-    pub fn from_file(file: &File) -> Box<dyn Mapper> {
-        mappers!(
-            file, 
-            (0, NROM), 
-            (1, MMC1), 
-            (3, CNROM)
-        )
+    pub fn from_file(file: &File) -> Box<dyn Mapper + Send> {
+        mappers!(file, (0, NROM), (1, MMC1), (3, CNROM))
     }
 }
 

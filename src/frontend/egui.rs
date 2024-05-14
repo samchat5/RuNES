@@ -1,14 +1,15 @@
-use crate::config::Config;
-use crate::core::bus::Bus;
-use crate::core::cpu::CPU;
+use crate::core::console::Console;
 use crate::core::frame::Frame;
 use crate::core::joypad::Buttons;
 use crate::ines_parser::File;
-use eframe::egui::{ColorImage, Key, Ui};
+use crossbeam::channel::{self, Sender};
+use eframe::egui::{self, menu, CentralPanel, ColorImage, Key, Ui};
 use eframe::epaint::ImageData;
 use eframe::App;
 use lazy_static::lazy_static;
+use rfd::FileDialog;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 impl From<Frame> for ImageData {
@@ -35,15 +36,35 @@ lazy_static! {
     });
 }
 
+pub enum ConsoleMsg {
+    JoypadDown(Buttons),
+    JoypadUp(Buttons),
+    RunFrame,
+}
+
+#[derive(Default)]
 pub struct EGuiApp {
-    cpu: CPU<'static>,
+    console: Option<Arc<Mutex<Console<'static>>>>,
+    channel: Option<Sender<ConsoleMsg>>,
 }
 
 impl App for EGuiApp {
-    fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
-        self.cpu.run_until_frame();
-        ctx.request_repaint_after(Duration::new(0, 16_666_667));
-        eframe::egui::CentralPanel::default().show(ctx, |ui| {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if let Some(channel) = &self.channel {
+            channel.send(ConsoleMsg::RunFrame).unwrap();
+        }
+
+        // Draw
+        ctx.request_repaint_after(Duration::new(0, 16_666_667 / 2));
+        CentralPanel::default().show(ctx, |ui| {
+            menu::bar(ui, |ui| {
+                if ui.button("Load ROM").clicked() {
+                    if let Some(path) = FileDialog::new().pick_file() {
+                        self.load(File::new(path))
+                    }
+                }
+            });
+
             self.show_texture(ui);
             self.handle_keyevent(ctx);
         });
@@ -51,37 +72,44 @@ impl App for EGuiApp {
 }
 
 impl EGuiApp {
-    pub fn new(rom: File) -> Self {
-        let mut cpu = CPU::new(Bus::new(&rom));
-
-        if Config::get_bool("enable_logging", false) {
-            cpu.set_sink(Box::new(
-                std::fs::File::options()
-                    .create(true)
-                    .write(true)
-                    .truncate(true)
-                    .open(Config::get_string("logging_path", "log.log"))
-                    .unwrap(),
-            ));
-            cpu.enable_logging();
+    pub fn new() -> Self {
+        Self {
+            channel: None,
+            console: None,
         }
-        cpu.reset();
+    }
 
-        Self { cpu }
+    fn load(&mut self, rom: File) {
+        let (send, recv) = channel::bounded::<ConsoleMsg>(1024);
+        let console = Arc::new(Mutex::new(Console::new(rom)));
+        self.channel = Some(send);
+        self.console = Some(console.clone());
+
+        std::thread::spawn(move || {
+            Console::run_thread(console.clone(), recv);
+        });
     }
 
     fn show_texture(&self, ui: &mut Ui) {
-        let texture = ui
-            .ctx()
-            .load_texture("NES", self.cpu.bus.ppu.curr_frame, Default::default());
-        ui.image((texture.id(), texture.size_vec2()));
+        if let Some(console) = &self.console {
+            let console = console.lock().unwrap();
+            let texture =
+                ui.ctx()
+                    .load_texture("NES", console.cpu.bus.ppu.curr_frame, Default::default());
+            ui.image((texture.id(), texture.size_vec2()));
+        }
     }
 
     fn handle_keyevent(&mut self, ctx: &eframe::egui::Context) {
-        let joypad = &mut self.cpu.bus.joypad;
-        let keys_down = ctx.input(|i| i.keys_down.clone());
-        KEY_MAP.iter().for_each(|(key, button)| {
-            joypad.buttons.set(*button, keys_down.contains(key));
-        });
+        if let Some(channel) = &self.channel {
+            let keys_down = ctx.input(|i| i.keys_down.clone());
+            KEY_MAP.iter().for_each(|(key, button)| {
+                if keys_down.contains(key) {
+                    channel.try_send(ConsoleMsg::JoypadDown(*button)).unwrap();
+                } else {
+                    channel.send(ConsoleMsg::JoypadUp(*button)).unwrap();
+                }
+            });
+        }
     }
 }

@@ -23,8 +23,4 @@ impl Control {
     pub fn new() -> Control {
         Control::empty()
     }
-
-    pub fn write(&mut self, val: u8) {
-        self.bits = val;
-    }
 }

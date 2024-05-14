@@ -3,9 +3,6 @@
     blip_buf 1.1.0. http://www.slack.net/~ant/ by Shay Green.
 */
 
-use bincode::{Decode, Encode};
-
-#[derive(Decode, Encode)]
 pub struct BlipBuf<const S: usize> {
     factor: u64,
     offset: u64,

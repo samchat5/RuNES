@@ -23,8 +23,4 @@ impl Mask {
     pub fn new() -> Mask {
         Mask::default()
     }
-
-    pub fn write(&mut self, val: u8) {
-        self.bits = val;
-    }
 }

@@ -1,5 +1,7 @@
 #![allow(non_camel_case_types, clippy::upper_case_acronyms)]
 
+use std::path::PathBuf;
+
 const NES_MAGIC: [u8; 4] = [0x4e, 0x45, 0x53, 0x1a];
 
 pub enum NameTableMirrorType {
@@ -270,7 +272,7 @@ pub struct File {
 }
 
 impl File {
-    pub fn new(file_path: &str) -> Self {
+    pub fn new(file_path: PathBuf) -> Self {
         let bytes = std::fs::read(file_path).unwrap();
         let file_size = bytes.len();
 

@@ -131,10 +131,10 @@ impl CPU<'_> {
             sp: 0xFD,
             pc: 0,
             bus,
-            status: Status { bits: 0x04 },
+            status: Status::from_bits(0x04).unwrap(),
             sink: Box::new(io::sink()),
             logging_enabled: false,
-            irq_flag: IRQSource { bits: 0 },
+            irq_flag: IRQSource::empty(),
             need_halt: false,
             run_irq: false,
             start_clock_count: 6,
@@ -228,9 +228,8 @@ impl CPU<'_> {
                         self.process_cycle();
                         read_val = self.read(self.bus.apu.dmc.current_addr);
                         self.end_cpu_cycle(true);
-                        match self.bus.apu.dmc.set_dmc_read_buffer(read_val) {
-                            IRQSignal::Set => self.irq_flag = IRQSource::DMC,
-                            _ => {}
+                        if let IRQSignal::Set = self.bus.apu.dmc.set_dmc_read_buffer(read_val) {
+                            self.irq_flag = IRQSource::DMC
                         }
                         self.dmc_dma_running = false;
                     } else if self.sprite_dma_transfer {
@@ -510,7 +509,7 @@ impl CPU<'_> {
 
     pub fn reset(&mut self) {
         self.bus.set_nmi_generated(false);
-        self.irq_flag = IRQSource { bits: 0 };
+        self.irq_flag = IRQSource::empty();
         self.need_halt = false;
         self.irq_mask = 0xff;
 
@@ -520,7 +519,7 @@ impl CPU<'_> {
         self.x = 0;
         self.sp = 0xFD;
         self.y = 0;
-        self.status = Status { bits: 0x04 };
+        self.status = Status::from_bits(0x04).unwrap();
 
         self.run_irq = false;
 
@@ -580,7 +579,7 @@ impl CPU<'_> {
         self.prev_nmi_flag = self.get_nmi_flag();
 
         self.prev_run_irq = self.run_irq;
-        self.run_irq = (self.irq_flag.bits & self.irq_mask) > 0
+        self.run_irq = (self.irq_flag.bits() & self.irq_mask) > 0
             && !self.status.contains(Status::INTERRUPT_DISABLE)
     }
 

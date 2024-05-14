@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::sync::{Arc, Mutex};
 
 use crate::core::apu::base_channel::AudioChannel;
 use crate::core::apu::frame_counter::IRQSignal;
@@ -25,7 +25,7 @@ pub struct Bus {
 
 impl Bus {
     pub fn new(file: &File) -> Bus {
-        let mapper = Rc::new(RefCell::new(MapperFactory::from_file(file)));
+        let mapper = Arc::new(Mutex::new(MapperFactory::from_file(file)));
         Bus {
             cpu_ram: [0; RAM_SIZE],
             mapper: mapper.clone(),
@@ -40,7 +40,7 @@ impl Bus {
             RAM_START..=RAM_END => self.cpu_ram[(addr & 0x07FF) as usize],
             PPU_REG_START..=PPU_REG_END => self.ppu.read_ppudata_trace(addr as usize),
             APU_IO_START..=APU_IO_END => self.read_apu_trace(addr),
-            _ => self.mapper.borrow().read(addr),
+            _ => self.mapper.lock().unwrap().read(addr),
         }
     }
 
@@ -71,7 +71,7 @@ impl Bus {
                 signal = ret.1;
                 ret.0
             }
-            _ => self.mapper.borrow().read(addr),
+            _ => self.mapper.lock().unwrap().read(addr),
         };
         (val, signal)
     }
@@ -82,7 +82,7 @@ impl Bus {
             RAM_START..=RAM_END => self.cpu_ram[(addr & 0x07FF) as usize] = data,
             PPU_REG_START..=PPU_REG_END => self.execute_ppu_write(addr, data),
             APU_IO_START..=APU_IO_END => signal = self.execute_apu_io_write(addr, data, cpu_cycle),
-            _ => self.mapper.to_owned().borrow_mut().write(addr, data),
+            _ => self.mapper.lock().unwrap().write(addr, data),
         }
         signal
     }
