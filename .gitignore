@@ -24,3 +24,6 @@ rust-project.json
 
 ### Misc
 *.mlb
+
+### Roms
+roms/**

@@ -316,4 +316,13 @@ impl Mapper for MMC1 {
             }
         }
     }
+
+    fn dump_save(&self) -> &[u8] {
+        self.prg_ram.as_slice()
+    }
+
+    fn load_save(&mut self, data: &[u8]) {
+        dbg!(data.len());
+        self.prg_ram = data.to_vec();
+    }
 }

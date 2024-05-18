@@ -1,4 +1,8 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    io::Write,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
@@ -32,6 +36,25 @@ impl Console<'_> {
         cpu.reset();
 
         Console { cpu }
+    }
+
+    pub fn dump_save(&self, file: PathBuf) -> std::io::Result<()> {
+        let mapper = self.cpu.bus.mapper.lock().unwrap();
+        let save = mapper.dump_save();
+        std::fs::File::options()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(file)?
+            .write_all(save)?;
+        Ok(())
+    }
+
+    pub fn load_save(&self, file: PathBuf) -> std::io::Result<()> {
+        let save = std::fs::read(file)?;
+        let mut mapper = self.cpu.bus.mapper.lock().unwrap();
+        mapper.load_save(save.as_slice());
+        Ok(())
     }
 
     pub fn run_thread(console: Arc<Mutex<Console<'static>>>, recv: Receiver<ConsoleMsg>) {

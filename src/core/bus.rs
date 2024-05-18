@@ -20,7 +20,7 @@ pub struct Bus {
     pub ppu: PPU,
     pub apu: APU,
     pub joypad: Joypad,
-    mapper: SharedMapper,
+    pub mapper: SharedMapper,
 }
 
 impl Bus {

@@ -9,6 +9,7 @@ use eframe::App;
 use lazy_static::lazy_static;
 use rfd::FileDialog;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -56,16 +57,28 @@ impl App for EGuiApp {
 
         // Draw
         ctx.request_repaint_after(Duration::new(0, 16_666_667 / 2));
-        CentralPanel::default().show(ctx, |ui| {
-            menu::bar(ui, |ui| {
-                if ui.button("Load ROM").clicked() {
-                    if let Some(path) = FileDialog::new().pick_file() {
-                        self.load(File::new(path))
+        CentralPanel::default().show(ctx, |_ui| {
+            egui::TopBottomPanel::top("panel").show(ctx, |ui| {
+                menu::bar(ui, |ui| {
+                    if ui.button("Load ROM").clicked() {
+                        if let Some(path) = FileDialog::new().pick_file() {
+                            self.load(File::new(path));
+                        }
                     }
-                }
+                    if ui.button("Save game").clicked() {
+                        if let Some(path) = FileDialog::new().save_file() {
+                            self.save_game(path).unwrap();
+                        }
+                    }
+                    if ui.button("Load game").clicked() {
+                        if let Some(path) = FileDialog::new().pick_file() {
+                            self.load_save(path).unwrap();
+                        }
+                    }
+                });
             });
 
-            self.show_texture(ui);
+            egui::CentralPanel::default().show(ctx, |ui| self.show_texture(ui));
             self.handle_keyevent(ctx);
         });
     }
@@ -90,13 +103,32 @@ impl EGuiApp {
         });
     }
 
+    fn save_game(&self, file: PathBuf) -> std::io::Result<()> {
+        if let Some(console) = &self.console {
+            let console = console.lock().unwrap();
+            console.dump_save(file)?;
+        }
+        Ok(())
+    }
+
+    fn load_save(&self, file: PathBuf) -> std::io::Result<()> {
+        if let Some(console) = &self.console {
+            let console = console.lock().unwrap();
+            console.load_save(file)?;
+        }
+        Ok(())
+    }
+
     fn show_texture(&self, ui: &mut Ui) {
         if let Some(console) = &self.console {
             let console = console.lock().unwrap();
             let texture =
                 ui.ctx()
                     .load_texture("NES", console.cpu.bus.ppu.curr_frame, Default::default());
-            ui.image((texture.id(), texture.size_vec2()));
+            let image = egui::Image::new((texture.id(), texture.size_vec2()))
+                .maintain_aspect_ratio(true)
+                .fit_to_fraction(egui::Vec2::new(1., 1.));
+            ui.add_sized(ui.available_size(), image);
         }
     }
 

@@ -121,4 +121,10 @@ pub trait Mapper {
             _ => panic!("Invalid address {:#X}", addr),
         }
     }
+
+    fn dump_save(&self) -> &[u8] {
+        &[]
+    }
+
+    fn load_save(&mut self, _data: &[u8]) {}
 }
