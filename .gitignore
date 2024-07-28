@@ -27,3 +27,6 @@ rust-project.json
 
 ### Roms
 roms/**
+
+### Saves
+saves/**

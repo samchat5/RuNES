@@ -23,7 +23,7 @@ use self::length_counter::NeedToRunFlag;
 pub struct APU {
     pulse1: Pulse,
     pulse2: Pulse,
-    _triangle: Triangle,
+    triangle: Triangle,
     _noise: Noise,
     pub dmc: DMC,
     frame_counter: FrameCounter,
@@ -51,7 +51,7 @@ impl APU {
         Self {
             pulse1: Pulse::new(AudioChannel::Pulse1),
             pulse2: Pulse::new(AudioChannel::Pulse2),
-            _triangle: Triangle::default(),
+            triangle: Triangle::default(),
             _noise: Noise::default(),
             dmc: DMC::default(),
             frame_counter: FrameCounter::default(),
@@ -93,6 +93,7 @@ impl APU {
         match channel {
             AudioChannel::Pulse1 => flag = self.pulse1.write_ctrl(val),
             AudioChannel::Pulse2 => flag = self.pulse2.write_ctrl(val),
+            AudioChannel::Triangle => self.triangle.write_ctrl(val),
             _ => {}
         }
 
@@ -113,6 +114,7 @@ impl APU {
         match channel {
             AudioChannel::Pulse1 => self.pulse1.write_timer_lo(val),
             AudioChannel::Pulse2 => self.pulse2.write_timer_lo(val),
+            AudioChannel::Triangle => self.triangle.write_timer_lo(val),
             _ => {}
         }
     }
@@ -122,6 +124,7 @@ impl APU {
         match channel {
             AudioChannel::Pulse1 => flag = self.pulse1.write_timer_hi(val),
             AudioChannel::Pulse2 => flag = self.pulse2.write_timer_hi(val),
+            AudioChannel::Triangle => flag = self.triangle.write_timer_hi(val),
             _ => {}
         }
 
@@ -137,11 +140,13 @@ impl APU {
             let callback = |typ: FrameType| {
                 self.pulse1.clock_quarter_frame();
                 self.pulse2.clock_quarter_frame();
+                self.triangle.clock_quarter_frame();
                 if typ == FrameType::HalfFrame {
                     self.pulse1.clock_length_counter();
                     self.pulse2.clock_length_counter();
                     self.pulse1.clock_sweep();
                     self.pulse2.clock_sweep();
+                    self.triangle.clock_half_frame();
                 }
             };
 
@@ -157,9 +162,11 @@ impl APU {
 
             self.pulse1.reload_counter();
             self.pulse2.reload_counter();
+            self.triangle.reload_counter();
 
             self.pulse1.clock(self.prev_cycle as u64);
             self.pulse2.clock(self.prev_cycle as u64);
+            self.triangle.clock(self.prev_cycle as u64);
             self.need_dmc_transfer = self.dmc.clock(self.prev_cycle as u64);
         }
     }
@@ -167,10 +174,13 @@ impl APU {
     pub fn read_status(&mut self) -> (u8, IRQSignal) {
         let mut status = 0x0;
         if self.pulse1.length.counter > 0 {
-            status |= 0x1;
+            status |= 0x01;
         }
         if self.pulse2.length.counter > 0 {
-            status |= 0x2;
+            status |= 0x02;
+        }
+        if self.triangle.length.counter > 0 {
+            status |= 0x04
         }
         if self.irq_pending {
             status |= 0x40;
@@ -205,6 +215,7 @@ impl APU {
     pub fn write_status(&mut self, val: u8, cpu_cycle: u64) {
         self.pulse1.set_enabled(val & 0x1 != 0);
         self.pulse2.set_enabled(val & 0x2 != 0);
+        self.triangle.set_enabled(val & 0x4 != 0);
         self.dmc.set_enabled(val & 0x10 != 0, cpu_cycle)
     }
 
@@ -223,6 +234,12 @@ impl APU {
         let pulse2 = self.pulse2.output() as f64;
         let pulse_out = pulse1 + pulse2;
         let square_volume = (477600. / (8128.0 / pulse_out + 100.0)) as i32;
-        self.output_buffer.add_sample(square_volume);
+
+        let triangle = self.triangle.output() as f64;
+        let dmc = self.dmc.output() as f64;
+        let tnd_out = 3. * triangle + dmc;
+        let tnd_volume = (816850. / ((24329. / tnd_out) + 100.0)) as i32;
+
+        self.output_buffer.add_sample(square_volume + tnd_volume);
     }
 }

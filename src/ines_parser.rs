@@ -1,6 +1,9 @@
 #![allow(non_camel_case_types, clippy::upper_case_acronyms)]
 
-use std::path::PathBuf;
+use std::{
+    hash::{DefaultHasher, Hash, Hasher},
+    path::PathBuf,
+};
 
 const NES_MAGIC: [u8; 4] = [0x4e, 0x45, 0x53, 0x1a];
 
@@ -254,7 +257,7 @@ pub fn get_chr_rom_size(header: Header) -> usize {
 }
 
 #[derive(Debug, Clone)]
-pub struct File {
+pub struct NESFile {
     // Header
     pub header: Header,
 
@@ -269,9 +272,11 @@ pub struct File {
 
     // Misc ROM Area
     pub misc_rom_area: Option<Vec<u8>>,
+
+    pub hash: u64,
 }
 
-impl File {
+impl NESFile {
     pub fn new(file_path: PathBuf) -> Self {
         let bytes = std::fs::read(file_path).unwrap();
         let file_size = bytes.len();
@@ -301,12 +306,16 @@ impl File {
             None
         };
 
-        File {
+        let mut hasher = DefaultHasher::new();
+        bytes.hash(&mut hasher);
+
+        NESFile {
             header,
             trainer,
             prg_rom_area,
             chr_rom_area,
             misc_rom_area,
+            hash: hasher.finish(),
         }
     }
 

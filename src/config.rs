@@ -17,9 +17,13 @@ impl Config {
     }
 
     #[must_use]
-    pub fn get_string(prop: &str, default: &str) -> String {
+    pub fn get_string_with_default(prop: &str, default: &str) -> String {
         CONF.get_string(prop)
             .unwrap_or_else(|_| default.to_string())
+    }
+
+    pub fn get_string(prop: &str) -> Option<String> {
+        CONF.get_string(prop).ok()
     }
 
     pub fn get_int<T: Into<i64> + From<i64>>(prop: &str, default: T) -> T {

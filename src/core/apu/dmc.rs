@@ -188,4 +188,8 @@ impl DMC {
         }
         false
     }
+
+    pub fn output(&self) -> f32 {
+        self.output_level as f32
+    }
 }

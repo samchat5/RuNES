@@ -5,7 +5,7 @@ use crate::core::apu::frame_counter::IRQSignal;
 use crate::core::apu::APU;
 use crate::core::joypad::Joypad;
 use crate::core::mappers::{MapperFactory, SharedMapper};
-use crate::{core::ppu::PPU, ines_parser::File};
+use crate::{core::ppu::PPU, ines_parser::NESFile};
 
 const RAM_SIZE: usize = 0x0800;
 const RAM_START: u16 = 0x0000;
@@ -24,7 +24,7 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(file: &File) -> Bus {
+    pub fn new(file: &NESFile) -> Bus {
         let mapper = Arc::new(Mutex::new(MapperFactory::from_file(file)));
         Bus {
             cpu_ram: [0; RAM_SIZE],
@@ -116,7 +116,11 @@ impl Bus {
             0x05 => self.apu.write_sweep(&AudioChannel::Pulse2, data),
             0x06 => self.apu.write_timer_lo(&AudioChannel::Pulse2, data),
             0x07 => self.apu.write_timer_hi(&AudioChannel::Pulse2, data),
-            0x08..=0x0F => {}
+            0x08 => self.apu.write_ctrl(&AudioChannel::Triangle, data),
+            0x09 => {}
+            0x0A => self.apu.write_timer_lo(&AudioChannel::Triangle, data),
+            0x0B => self.apu.write_timer_hi(&AudioChannel::Triangle, data),
+            0x0C..=0x0F => {}
             0x10 => self.apu.write_dmc_ctrl(data),
             0x11 => self.apu.write_dmc_load(data),
             0x12 => self.apu.write_dmc_addr(data),

@@ -3,23 +3,21 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     SampleRate, StreamConfig, StreamError,
 };
 use crossbeam::channel::Receiver;
-
-use crate::{config::Config, frontend::egui::ConsoleMsg, ines_parser::File};
-
+use crate::{config::Config, frontend::egui::ConsoleMsg, ines_parser::NESFile};
 use super::{apu, bus::Bus, cpu::CPU};
 
 pub struct Console<'a> {
     pub cpu: CPU<'a>,
+    pub rom_hash: u64,
 }
 
 impl Console<'_> {
-    pub fn new(rom: File) -> Self {
+    pub fn new(rom: NESFile) -> Self {
         let mut cpu = CPU::new(Bus::new(&rom));
 
         if Config::get_bool("enable_logging", false) {
@@ -28,17 +26,20 @@ impl Console<'_> {
                     .create(true)
                     .write(true)
                     .truncate(true)
-                    .open(Config::get_string("logging_path", "log.log"))
+                    .open(Config::get_string_with_default("logging_path", "log.log"))
                     .unwrap(),
             ));
             cpu.enable_logging();
         }
         cpu.reset();
 
-        Console { cpu }
+        Console {
+            cpu,
+            rom_hash: rom.hash,
+        }
     }
 
-    pub fn dump_save(&self, file: PathBuf) -> std::io::Result<()> {
+    pub fn dump_save_to_path(&self, file: PathBuf) -> std::io::Result<()> {
         let mapper = self.cpu.bus.mapper.lock().unwrap();
         let save = mapper.dump_save();
         std::fs::File::options()
@@ -50,6 +51,16 @@ impl Console<'_> {
         Ok(())
     }
 
+    pub fn dump_save(&self) -> std::io::Result<()> {
+        if let Some(save_dir_str) = Config::get_string("save_directory") {
+            let mut save_path = PathBuf::from(save_dir_str);
+            save_path.push(format!("{}.sav", self.rom_hash));
+            println!("{}", save_path.to_str().unwrap());
+            self.dump_save_to_path(save_path)?;
+        }
+        Ok(())
+    }
+
     pub fn load_save(&self, file: PathBuf) -> std::io::Result<()> {
         let save = std::fs::read(file)?;
         let mut mapper = self.cpu.bus.mapper.lock().unwrap();
@@ -58,7 +69,7 @@ impl Console<'_> {
     }
 
     pub fn run_thread(console: Arc<Mutex<Console<'static>>>, recv: Receiver<ConsoleMsg>) {
-        let (audio_send, audio_recv) = crossbeam::channel::bounded::<i16>(2048);
+        let (audio_send, audio_recv) = crossbeam::channel::bounded::<i16>(4096);
         let (stream, sample_rate) = Console::setup_audio(audio_recv);
         let mut samples = Vec::with_capacity(16);
 

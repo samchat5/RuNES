@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use crate::ines_parser::{File, Flags1Enum};
+use crate::ines_parser::{Flags1Enum, NESFile};
 
 use self::{cnrom::CNROM, mmc1::MMC1, nrom::NROM};
 
@@ -49,7 +49,7 @@ macro_rules! mappers {
 }
 
 impl MapperFactory {
-    pub fn from_file(file: &File) -> Box<dyn Mapper + Send> {
+    pub fn from_file(file: &NESFile) -> Box<dyn Mapper + Send> {
         mappers!(file, (0, NROM), (1, MMC1), (3, CNROM))
     }
 }
