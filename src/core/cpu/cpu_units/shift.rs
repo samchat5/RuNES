@@ -49,7 +49,7 @@ pub(crate) trait Shift: Logical + Arithmetic {
     }
 }
 
-impl Shift for CPU<'_> {
+impl Shift for CPU {
     fn shift(&mut self, val: u8, op: ShiftOp) -> u8 {
         let res = match op {
             ShiftOp::ASL => {

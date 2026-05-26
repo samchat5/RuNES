@@ -31,7 +31,7 @@ pub(crate) trait IncDecOps: Arithmetic {
     fn dcp(&mut self);
 }
 
-impl IncDecOps for CPU<'_> {
+impl IncDecOps for CPU {
     fn inc_dec(&mut self, op: IncDec) {
         let addr = self.operand;
         let val = self.memory_read(addr);

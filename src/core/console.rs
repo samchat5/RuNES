@@ -1,22 +1,16 @@
 use std::{
     io::Write,
     path::PathBuf,
-    sync::{Arc, Mutex},
 };
-use cpal::{
-    traits::{DeviceTrait, HostTrait, StreamTrait},
-    SampleRate, StreamConfig, StreamError,
-};
-use crossbeam::channel::Receiver;
-use crate::{config::Config, frontend::egui::ConsoleMsg, ines_parser::NESFile};
-use super::{apu, bus::Bus, cpu::CPU};
+use crate::{config::Config, ines_parser::NESFile};
+use super::{bus::Bus, cpu::CPU, frame::Frame, joypad::Buttons};
 
-pub struct Console<'a> {
-    pub cpu: CPU<'a>,
+pub struct Console {
+    pub cpu: CPU,
     pub rom_hash: u64,
 }
 
-impl Console<'_> {
+impl Console {
     pub fn new(rom: NESFile) -> Self {
         let mut cpu = CPU::new(Bus::new(&rom));
 
@@ -37,6 +31,21 @@ impl Console<'_> {
             cpu,
             rom_hash: rom.hash,
         }
+    }
+
+    pub fn run_frame(&mut self) -> Vec<i16> {
+        self.cpu.run_until_frame();
+        let mut samples = Vec::with_capacity(1024);
+        self.cpu.bus.apu.output_buffer.end_frame(&mut samples);
+        samples
+    }
+
+    pub fn set_joypad(&mut self, button: Buttons, pressed: bool) {
+        self.cpu.bus.joypad.buttons.set(button, pressed);
+    }
+
+    pub fn frame(&self) -> &Frame {
+        &self.cpu.bus.ppu.curr_frame
     }
 
     pub fn dump_save_to_path(&self, file: PathBuf) -> std::io::Result<()> {
@@ -66,81 +75,5 @@ impl Console<'_> {
         let mut mapper = self.cpu.bus.mapper.lock().unwrap();
         mapper.load_save(save.as_slice());
         Ok(())
-    }
-
-    pub fn run_thread(console: Arc<Mutex<Console<'static>>>, recv: Receiver<ConsoleMsg>) {
-        let (audio_send, audio_recv) = crossbeam::channel::bounded::<i16>(4096);
-        let (stream, sample_rate) = Console::setup_audio(audio_recv);
-        let mut samples = Vec::with_capacity(16);
-
-        {
-            let mut console = console.lock().unwrap();
-            console
-                .cpu
-                .bus
-                .apu
-                .output_buffer
-                .set_rates(apu::APU::CLOCK_RATE, sample_rate.0 as f64);
-        }
-
-        loop {
-            for msg in recv.try_iter() {
-                let mut console = console.lock().unwrap();
-                match msg {
-                    ConsoleMsg::JoypadDown(button) => {
-                        console.cpu.bus.joypad.buttons.set(button, true)
-                    }
-                    ConsoleMsg::JoypadUp(button) => {
-                        console.cpu.bus.joypad.buttons.set(button, false)
-                    }
-                    ConsoleMsg::RunFrame => {
-                        // Exectue
-                        console.cpu.run_until_frame();
-
-                        // Audio
-                        console.cpu.bus.apu.output_buffer.end_frame(&mut samples);
-                        for sample in samples.iter() {
-                            audio_send.try_send(*sample).ok();
-                        }
-                        stream.play().unwrap();
-                        samples.clear();
-                    }
-                }
-            }
-        }
-    }
-
-    pub fn setup_audio(audio_recv: Receiver<i16>) -> (cpal::Stream, SampleRate) {
-        let host = cpal::default_host();
-        let device = host.default_output_device().unwrap();
-
-        let default_config: StreamConfig = device.default_output_config().unwrap().into();
-        let sample_rate = default_config.sample_rate;
-        let channels = default_config.channels;
-
-        let stream = device
-            .build_output_stream(
-                &default_config,
-                move |buf: &mut [i16], _: &cpal::OutputCallbackInfo| {
-                    Console::stream_callback(buf, audio_recv.clone(), channels);
-                },
-                |e: StreamError| {
-                    dbg!(e);
-                },
-                None,
-            )
-            .unwrap();
-        (stream, sample_rate)
-    }
-
-    fn stream_callback(buf: &mut [i16], audio_recv: Receiver<i16>, channels: u16) {
-        let requested = buf.len();
-        let sample_iter = audio_recv.try_iter().take(requested / channels as usize);
-
-        let mut i = 0;
-        for sample in sample_iter {
-            buf[i..(i + channels as usize)].fill(sample);
-            i += channels as usize;
-        }
     }
 }

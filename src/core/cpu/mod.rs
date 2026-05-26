@@ -77,7 +77,7 @@ pub enum AddressingMode {
     Indirect,
 }
 
-pub struct CPU<'a> {
+pub struct CPU {
     // Registers
     pub x: u8,
     pub y: u8,
@@ -118,11 +118,9 @@ pub struct CPU<'a> {
     need_dummy_read: bool,
     sprite_dma_offset: u8,
     dmc_dma_running: bool,
-
-    phantom: std::marker::PhantomData<&'a ()>,
 }
 
-impl CPU<'_> {
+impl CPU {
     pub fn new(bus: Bus) -> Self {
         CPU {
             x: 0,
@@ -154,7 +152,6 @@ impl CPU<'_> {
             sprite_dma_offset: 0,
             irq_mask: 0,
             dmc_dma_running: false,
-            phantom: std::marker::PhantomData,
         }
     }
 

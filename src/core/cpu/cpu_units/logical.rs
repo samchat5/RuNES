@@ -30,7 +30,7 @@ pub trait Logical {
     }
 }
 
-impl Logical for CPU<'_> {
+impl Logical for CPU {
     fn bit_op(&mut self, op: LogicalOp) {
         let val = self.get_operand_val();
         self.set_register(

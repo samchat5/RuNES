@@ -34,7 +34,7 @@ pub trait LoadStore {
     }
 }
 
-impl LoadStore for CPU<'_> {
+impl LoadStore for CPU {
     fn ld(&mut self, reg: Register) {
         let val = self.get_operand_val();
         self.set_register(reg, val);

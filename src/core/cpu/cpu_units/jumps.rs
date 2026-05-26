@@ -10,7 +10,7 @@ pub trait Jumps {
     fn rts(&mut self);
 }
 
-impl Jumps for CPU<'_> {
+impl Jumps for CPU {
     fn jmp_to_addr(&mut self, addr: u16) {
         self.pc = addr
     }

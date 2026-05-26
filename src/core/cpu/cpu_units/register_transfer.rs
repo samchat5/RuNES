@@ -31,7 +31,7 @@ pub trait RegisterTransfer {
     }
 }
 
-impl RegisterTransfer for CPU<'_> {
+impl RegisterTransfer for CPU {
     fn transfer(&mut self, from: Register, to: Register) {
         let val_from = match from {
             Register::A => self.acc,

@@ -10,7 +10,7 @@ pub trait StackOps {
     fn plp(&mut self);
 }
 
-impl StackOps for CPU<'_> {
+impl StackOps for CPU {
     fn pha(&mut self) {
         self.push(self.acc);
     }

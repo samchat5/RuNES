@@ -10,7 +10,7 @@ pub trait SysFuncs {
     fn irq(&mut self);
 }
 
-impl SysFuncs for CPU<'_> {
+impl SysFuncs for CPU {
     fn nop(&mut self) {
         self.get_operand_val();
     }

@@ -6,7 +6,7 @@ pub trait Loggable {
     fn log(&mut self);
 }
 
-impl Loggable for CPU<'_> {
+impl Loggable for CPU {
     fn log(&mut self) {
         if self.logging_enabled {
             let code = self.read_trace(self.pc);

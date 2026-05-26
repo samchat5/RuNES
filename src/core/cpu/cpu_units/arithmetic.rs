@@ -37,7 +37,7 @@ pub trait Arithmetic {
     }
 }
 
-impl Arithmetic for CPU<'_> {
+impl Arithmetic for CPU {
     fn add(&mut self, val: u8) {
         let res = self.acc as u16 + val as u16 + u16::from(self.status.contains(Status::CARRY));
         self.set_zero_neg_flags(val);

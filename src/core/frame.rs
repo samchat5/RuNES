@@ -1,8 +1,7 @@
-use sdl2::pixels::Color;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
-use image::{ImageResult, save_buffer};
+use image::{ImageResult, Rgb, save_buffer};
 use image::ColorType;
 
 #[derive(Debug, Clone, Copy)]
@@ -25,11 +24,11 @@ impl Frame {
         }
     }
 
-    pub fn set_pixel(&mut self, x: usize, y: usize, color: Color) {
+    pub fn set_pixel(&mut self, x: usize, y: usize, color: Rgb<u8>) {
         let index = (y * 256 + x) * 3;
-        self.image[index] = color.r;
-        self.image[index + 1] = color.g;
-        self.image[index + 2] = color.b;
+        self.image[index] = color.0[0];
+        self.image[index + 1] = color.0[1];
+        self.image[index + 2] = color.0[2];
     }
 
     pub fn get_hash(&self) -> u64 {

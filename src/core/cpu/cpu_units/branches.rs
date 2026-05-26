@@ -36,7 +36,7 @@ pub trait Branches {
     }
 }
 
-impl Branches for CPU<'_> {
+impl Branches for CPU {
     fn branch_relative(&mut self, flag: Status, set: bool) {
         let branch = if set {
             self.status.contains(flag)

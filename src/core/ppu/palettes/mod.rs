@@ -1,10 +1,10 @@
 use std::{fs::File, io::Read};
 
+use image::Rgb;
 use itertools::Itertools;
-use sdl2::pixels::Color;
 
 pub struct Palette {
-    pub system_palette: [Color; 0x40],
+    pub system_palette: [Rgb<u8>; 0x40],
 }
 
 impl Default for Palette {
@@ -25,9 +25,9 @@ impl Palette {
                     let r = chunk.next().unwrap().unwrap();
                     let g = chunk.next().unwrap().unwrap();
                     let b = chunk.next().unwrap().unwrap();
-                    Color { r, g, b, a: 0xff }
+                    Rgb([r, g, b])
                 })
-                .collect::<Vec<Color>>()
+                .collect::<Vec<Rgb<u8>>>()
                 .try_into()
                 .unwrap(),
         }
